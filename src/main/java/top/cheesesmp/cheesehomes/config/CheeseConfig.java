@@ -60,6 +60,8 @@ public final class CheeseConfig {
     // --- dialog ------------------------------------------------------------
     public final int callbackLifetimeSeconds;
     public final int callbackUses;
+    public final boolean spritesEnabled;
+    public final boolean spritesInList;
 
     public final String listTitle;
     public final Material listIcon;
@@ -107,6 +109,7 @@ public final class CheeseConfig {
     public final int iconsButtonWidth;
     public final int iconsControlWidth;
     public final int iconsPageSize;
+    public final int iconsCallbackLifetimeSeconds;
     public final String iconsSearchLabel;
     public final int iconsSearchWidth;
     public final int iconsSearchMaxLength;
@@ -165,15 +168,17 @@ public final class CheeseConfig {
 
         this.callbackLifetimeSeconds = Math.max(10, cfg.getInt("dialog.callback-lifetime-seconds", 600));
         this.callbackUses = Math.max(1, cfg.getInt("dialog.callback-uses", 16));
+        this.spritesEnabled = cfg.getBoolean("dialog.sprites.enabled", true);
+        this.spritesInList = cfg.getBoolean("dialog.sprites.in-list", true);
 
         this.listTitle = cfg.getString("dialog.list.title", "<white>Homes");
         this.listIcon = material(cfg.getString("dialog.list.icon", "minecraft:white_bed"), Material.WHITE_BED);
-        this.listColumns = clamp(cfg.getInt("dialog.list.columns", 3), 1, 8);
+        this.listColumns = clamp(cfg.getInt("dialog.list.columns", 5), 1, 8);
         this.listButtonWidth = clamp(cfg.getInt("dialog.list.button-width", 65), 1, 1024);
         this.listExpandSteps = readSteps(cfg.getIntegerList("dialog.list.expand-steps"), this.hardCap);
         this.listShowMoreLabel = cfg.getString("dialog.list.show-more-label", "<gray>Show More");
         this.listShowMoreTooltip = cfg.getString("dialog.list.show-more-tooltip", "");
-        this.listShowMoreWidth = clamp(cfg.getInt("dialog.list.show-more-width", 205), 1, 1024);
+        this.listShowMoreWidth = clamp(cfg.getInt("dialog.list.show-more-width", this.listButtonWidth), 1, 1024);
         this.listCloseLabel = cfg.getString("dialog.list.close-label", "<gray>Close");
         this.listEntryLabel = cfg.getString("dialog.list.entry-label", "<white><name>");
         this.listEntryTooltip = cfg.getString("dialog.list.entry-tooltip", "");
@@ -211,7 +216,10 @@ public final class CheeseConfig {
         this.iconsColumns = clamp(cfg.getInt("dialog.icons.columns", 4), 1, 8);
         this.iconsButtonWidth = clamp(cfg.getInt("dialog.icons.button-width", 130), 1, 1024);
         this.iconsControlWidth = clamp(cfg.getInt("dialog.icons.control-width", 100), 1, 1024);
-        this.iconsPageSize = clamp(cfg.getInt("dialog.icons.page-size", 32), 4, 256);
+        // 0 means "one page with everything on it".
+        this.iconsPageSize = clamp(cfg.getInt("dialog.icons.page-size", 0), 0, 4096);
+        this.iconsCallbackLifetimeSeconds =
+                Math.max(10, cfg.getInt("dialog.icons.callback-lifetime-seconds", 120));
         this.iconsSearchLabel = cfg.getString("dialog.icons.search-label", "<white>Search");
         this.iconsSearchWidth = clamp(cfg.getInt("dialog.icons.search-width", 220), 1, 1024);
         this.iconsSearchMaxLength = clamp(cfg.getInt("dialog.icons.search-max-length", 40), 1, 256);

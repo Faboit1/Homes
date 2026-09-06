@@ -78,17 +78,27 @@ dialog:
   # How many times one rendered button may be clicked before it goes inert.
   callback-uses: 16
 
+  sprites:
+    # Draw real item sprites on buttons instead of plain text. Needs the
+    # CheeseCore plugin, which resolves each texture against the atlas layout of
+    # the client actually reading the dialog. Without CheeseCore installed, or
+    # for a client older than 1.21.9, buttons quietly stay text-only.
+    enabled: true
+    # Also prefix every home in the list with its own icon.
+    in-list: true
+
   list:
     title: '<white>Homes'
     icon: 'minecraft:white_bed'
-    columns: 3
+    columns: 5
     button-width: 65
     # Progressive reveal, exactly like a "Show More" button: the menu opens at
     # the first size, each click of Show More moves to the next.
     expand-steps: [9, 27, 100]
     show-more-label: '<gray>Show More'
     show-more-tooltip: '<gray>Reveal more home slots'
-    show-more-width: 205
+    # Defaults to button-width so Show More lines up with the slot grid.
+    show-more-width: 65
     close-label: '<gray>Close'
     # <name> = home name, <index> = 1-based slot
     entry-label: '<white><name>'
@@ -132,7 +142,14 @@ dialog:
     columns: 4
     button-width: 130
     control-width: 100
-    page-size: 32
+    # Icons per page. 0 shows every icon in one dialog, which is what the
+    # picker is built for - the client handles the scroll. Raise it above 0 only
+    # if you want the Previous / Next buttons back.
+    page-size: 0
+    # The picker registers a click callback per button, so with paging off it
+    # registers well over a thousand at once. A shorter life than the global
+    # callback-lifetime-seconds keeps those from piling up between openings.
+    callback-lifetime-seconds: 120
     search-label: '<white>Search'
     search-width: 220
     search-max-length: 40

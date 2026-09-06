@@ -6,6 +6,15 @@ author: CheeseSMP
 api-version: '1.21'
 folia-supported: true
 
+# Optional: when CheeseCore is installed, dialog buttons draw real item sprites
+# resolved against each viewer's atlas layout. Without it they stay text-only.
+dependencies:
+  server:
+    CheeseCore:
+      load: BEFORE
+      required: false
+      join-classpath: true
+
 # Paper downloads these at load time instead of us shading them in.
 libraries:
   - 'org.xerial:sqlite-jdbc:3.53.4.0'
