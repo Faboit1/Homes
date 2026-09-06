@@ -1,0 +1,198 @@
+# ==========================================================================
+#  CheeseHomes  -  Folia-native, dialog driven homes
+# ==========================================================================
+#  Every string below is MiniMessage. Placeholders are written as <name>.
+#  Reload with /cheesehomes reload
+# ==========================================================================
+
+storage:
+  # File name inside plugins/CheeseHomes/
+  file: homes.db
+  # How often dirty player data is written back to SQLite (seconds).
+  # Writes are batched on a dedicated thread; 0 = write immediately.
+  flush-interval-seconds: 30
+  # SQLite busy timeout in milliseconds.
+  busy-timeout-ms: 5000
+  # Keep a departed player's homes cached this long before evicting (seconds).
+  # Smooths out relog storms; set to 0 to evict on quit.
+  cache-linger-seconds: 120
+
+limits:
+  # Slots a player gets with no matching permission.
+  default: 3
+  # Nothing can exceed this, ever. Also the value used by "unlimited".
+  hard-cap: 100
+  # cheesehomes.maxhomes.<amount>  ->  highest matching amount wins.
+  permission-prefix: 'cheesehomes.maxhomes.'
+  # Grants the hard cap.
+  unlimited-permission: 'cheesehomes.maxhomes.unlimited'
+  # Some setups (wildcards, permissions.yml defaults, operators) never put the
+  # numeric node into a player's effective permission set. With this on we also
+  # ask directly, counting down from hard-cap, and stop at the first match.
+  # Turn it off if you want operators held to the default slot count.
+  probe-permissions: true
+  # Flat permission -> amount grants, checked alongside the numeric prefix.
+  # Handy when your rank plugin cannot hand out wildcard-ish nodes.
+  grants:
+    cheesehomes.rank.vip: 5
+    cheesehomes.rank.mvp: 10
+    cheesehomes.rank.legend: 25
+
+teleport:
+  # Seconds the player must stand still before the teleport fires.
+  # Overridable per player with cheesehomes.warmup.<seconds> (lowest wins).
+  warmup-seconds: 3.0
+  warmup-permission-prefix: 'cheesehomes.warmup.'
+  warmup-bypass-permission: 'cheesehomes.bypass.warmup'
+  cancel-on-move: true
+  # How far a player may drift during warmup before it cancels (blocks).
+  cancel-on-move-distance: 0.35
+  cancel-on-damage: true
+  # Seconds between teleports.
+  # Overridable per player with cheesehomes.cooldown.<seconds> (lowest wins).
+  cooldown-seconds: 5.0
+  cooldown-permission-prefix: 'cheesehomes.cooldown.'
+  cooldown-bypass-permission: 'cheesehomes.bypass.cooldown'
+  # Show the remaining warmup on the action bar.
+  countdown-actionbar: true
+
+worlds:
+  # Worlds homes may never be set in.
+  blacklist: []
+  # When true a player also needs cheesehomes.world.<world> to set a home there.
+  require-per-world-permission: false
+  per-world-permission-prefix: 'cheesehomes.world.'
+
+homes:
+  # Default icon for a freshly created home.
+  default-icon: 'minecraft:white_bed'
+  # Auto-generated name for a new home: <index> is the 1-based slot number.
+  default-name: 'Home <index>'
+  max-name-length: 24
+  # Names are matched case-insensitively; this is the allowed character set.
+  name-pattern: '^[A-Za-z0-9 _\-]+$'
+
+dialog:
+  # How long a rendered dialog's buttons stay clickable (seconds).
+  callback-lifetime-seconds: 600
+  # How many times one rendered button may be clicked before it goes inert.
+  callback-uses: 16
+
+  list:
+    title: '<white>Homes'
+    icon: 'minecraft:white_bed'
+    columns: 3
+    button-width: 65
+    # Progressive reveal, exactly like a "Show More" button: the menu opens at
+    # the first size, each click of Show More moves to the next.
+    expand-steps: [9, 27, 100]
+    show-more-label: '<gray>Show More'
+    show-more-tooltip: '<gray>Reveal more home slots'
+    show-more-width: 205
+    close-label: '<gray>Close'
+    # <name> = home name, <index> = 1-based slot
+    entry-label: '<white><name>'
+    entry-tooltip: '<white><name><newline><gray>Click to manage'
+    empty-label: '<dark_gray>New Home'
+    empty-tooltip: '<gray>Click to set a new home here'
+    locked-label: '<red>Locked'
+    locked-tooltip: '<gray>Buy <white>Cheese<color:#00A6FF>+</color> <gray>for more home slots'
+
+  manage:
+    title: '<white><name>'
+    # <name> <world> <x> <y> <z> <index> are available here.
+    body: '<gray><world> <dark_gray>| <gray><x>, <y>, <z>'
+    width: 140
+    teleport-label: '<green>Teleport'
+    teleport-tooltip: '<gray>Warp to <white><name>'
+    icon-label: 'Change Icon'
+    icon-tooltip: '<gray>Pick a new icon for this home'
+    rename-label: '<white>Rename'
+    rename-tooltip: '<gray>Give this home a new name'
+    delete-label: '<red>Delete'
+    delete-tooltip: '<gray>Remove this home'
+    back-label: '<gray>Back'
+
+  rename:
+    title: '<white>Rename Home'
+    input-label: '<white>New Name'
+    input-width: 220
+    save-label: '<green>Save'
+    cancel-label: '<gray>Cancel'
+    width: 140
+
+  delete:
+    title: '<white>Delete <name>?'
+    body: '<gray>This cannot be undone.'
+    confirm-label: '<red>Delete'
+    cancel-label: '<gray>Cancel'
+
+  icons:
+    title: '<white>Choose Icon'
+    columns: 4
+    button-width: 130
+    control-width: 100
+    page-size: 32
+    search-label: '<white>Search'
+    search-width: 220
+    search-max-length: 40
+    search-button-label: '<white>Search'
+    default-label: '<white>Default'
+    back-label: '<gray>Back'
+    next-label: '<gray>Next Page'
+    prev-label: '<gray>Previous'
+    selected-color: 'green'
+    unselected-color: 'white'
+    # Leave empty to offer every obtainable item. Otherwise an explicit
+    # allow-list of namespaced ids.
+    allowed: []
+    # Ids never offered, even when `allowed` is empty.
+    denied:
+      - 'minecraft:air'
+
+import:
+  modernhome:
+    # Path to ModernHome's database, relative to the server root.
+    path: 'plugins/ModernHome/storage.db'
+    # Only import rows carrying this server_id. Empty imports every row.
+    server-id: ''
+    # ModernHome stores block coordinates - land players in the middle of the
+    # block instead of on its corner.
+    center-on-block: true
+
+messages:
+  prefix: '<color:#FFD24A>Cheese<white>Homes <dark_gray>| <reset>'
+  no-permission: '<red>You do not have permission to do that.'
+  players-only: '<red>Only players can use that.'
+  reloaded: '<green>Configuration reloaded.'
+  home-set: '<green>Set home <white><name><green>.'
+  home-updated: '<green>Moved home <white><name><green> here.'
+  home-deleted: '<green>Deleted home <white><name><green>.'
+  home-renamed: '<green>Renamed to <white><name><green>.'
+  icon-changed: '<green>Icon updated.'
+  home-not-found: "<red>You don't have a home called <white><name><red>."
+  no-homes: "<gray>You haven't set any homes yet."
+  limit-reached: '<red>You have used all <white><limit><red> of your home slots.'
+  name-taken: '<red>You already have a home called <white><name><red>.'
+  name-invalid: '<red>That name contains characters that are not allowed.'
+  name-too-long: '<red>Home names can be at most <white><max><red> characters.'
+  name-empty: '<red>Please enter a name.'
+  world-blacklisted: '<red>Homes cannot be set in this world.'
+  world-no-permission: '<red>You cannot set homes in this world.'
+  world-missing: '<red>The world <white><world><red> is not loaded.'
+  cooldown: '<red>Wait <white><time>s<red> before teleporting again.'
+  warmup-start: '<gray>Teleporting in <white><time>s<gray> - do not move.'
+  warmup-actionbar: '<gray>Teleporting in <white><time>s'
+  warmup-cancelled-move: '<red>Teleport cancelled - you moved.'
+  warmup-cancelled-damage: '<red>Teleport cancelled - you took damage.'
+  teleported: '<green>Welcome to <white><name><green>.'
+  teleport-refused: "<red>You can't teleport right now - respawn, wake up or dismount first."
+  teleport-failed: '<red>Something went wrong teleporting you. Please tell an admin.'
+  storage-error: '<red>Your homes could not be loaded. Please tell an admin.'
+  still-loading: '<gray>Still loading your homes, try again in a moment.'
+  unknown-icon: '<red>Unknown item: <white><icon>'
+  import-usage: '<gray>Usage: <white>/cheesehomes import modernhome [overwrite]'
+  import-missing: '<red>No database found at <white><path><red>.'
+  import-started: '<gray>Importing from <white><path><gray> - this runs off the main thread.'
+  import-done: '<green>Imported <white><homes><green> homes for <white><owners><green> players. <gray>Skipped <white><skipped><gray> players who already had homes, dropped <white><dropped><gray> unusable rows.'
+  import-failed: '<red>Import failed: <white><error>'

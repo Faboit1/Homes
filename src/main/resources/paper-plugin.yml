@@ -1,0 +1,33 @@
+name: CheeseHomes
+version: '${version}'
+main: top.cheesesmp.cheesehomes.CheeseHomesPlugin
+description: '${description}'
+author: CheeseSMP
+api-version: '1.21'
+folia-supported: true
+
+# Paper downloads these at load time instead of us shading them in.
+libraries:
+  - 'org.xerial:sqlite-jdbc:3.53.4.0'
+permissions:
+  cheesehomes.use:
+    description: Open the homes menu and teleport to a home
+    default: true
+  cheesehomes.set:
+    description: Create or move a home
+    default: true
+  cheesehomes.delete:
+    description: Delete one of your own homes
+    default: true
+  cheesehomes.admin:
+    description: Reload CheeseHomes and read its status
+    default: op
+  cheesehomes.maxhomes.unlimited:
+    description: Grants the configured hard cap of home slots
+    default: false
+  cheesehomes.bypass.cooldown:
+    description: Skip the teleport cooldown
+    default: false
+  cheesehomes.bypass.warmup:
+    description: Skip the teleport warm-up
+    default: false
