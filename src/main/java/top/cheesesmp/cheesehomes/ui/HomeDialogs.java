@@ -19,6 +19,7 @@ import net.kyori.adventure.text.format.NamedTextColor;
 import net.kyori.adventure.text.format.TextColor;
 import net.kyori.adventure.text.format.TextDecoration;
 import net.kyori.adventure.text.event.ClickCallback;
+import org.bukkit.Material;
 import org.bukkit.entity.Player;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.plugin.Plugin;
@@ -55,10 +56,11 @@ public final class HomeDialogs {
     private final HomeOperations operations;
     private final LimitResolver limits;
     private final TeleportService teleports;
+    private final SpriteBridge sprites;
 
     public HomeDialogs(Plugin plugin, Supplier<CheeseConfig> config, Supplier<IconCatalog> catalog,
                        Msg msg, HomeService homes, HomeOperations operations,
-                       LimitResolver limits, TeleportService teleports) {
+                       LimitResolver limits, TeleportService teleports, SpriteBridge sprites) {
         this.plugin = plugin;
         this.config = config;
         this.catalog = catalog;
@@ -67,6 +69,7 @@ public final class HomeDialogs {
         this.operations = operations;
         this.limits = limits;
         this.teleports = teleports;
+        this.sprites = sprites;
     }
 
     // === screens ===========================================================
@@ -265,11 +268,14 @@ public final class HomeDialogs {
             CheeseConfig cfg = this.config.get();
             List<IconCatalog.Entry> hits = this.catalog.get().search(query);
 
+            // page-size 0 means "everything in one dialog"; the client scrolls it.
             int pageSize = cfg.iconsPageSize;
-            int pages = Math.max(1, (hits.size() + pageSize - 1) / pageSize);
-            int current = Math.max(0, Math.min(page, pages - 1));
-            int from = current * pageSize;
-            int to = Math.min(hits.size(), from + pageSize);
+            boolean paged = pageSize > 0;
+            int pages = paged ? Math.max(1, (hits.size() + pageSize - 1) / pageSize) : 1;
+            int current = paged ? Math.max(0, Math.min(page, pages - 1)) : 0;
+            int from = paged ? current * pageSize : 0;
+            int to = paged ? Math.min(hits.size(), from + pageSize) : hits.size();
+            int lifetime = cfg.iconsCallbackLifetimeSeconds;
 
             TextColor selected = color(cfg.iconsSelectedColor, NamedTextColor.GREEN);
             TextColor unselected = color(cfg.iconsUnselectedColor, NamedTextColor.WHITE);
@@ -277,14 +283,14 @@ public final class HomeDialogs {
             List<ActionButton> buttons = new ArrayList<>((to - from) + 5);
             buttons.add(ActionButton.builder(Text.mm(cfg.iconsSearchButtonLabel))
                     .width(cfg.iconsControlWidth)
-                    .action(action(player, view -> {
+                    .action(action(player, lifetime, view -> {
                         String typed = view.getText("search");
                         openIcons(player, slot, typed == null ? "" : typed, 0);
                     }))
                     .build());
             buttons.add(ActionButton.builder(Text.mm(cfg.iconsDefaultLabel))
                     .width(cfg.iconsControlWidth)
-                    .action(action(player, view -> {
+                    .action(action(player, lifetime, view -> {
                         this.operations.setIcon(owned, home, cfg.defaultIcon);
                         this.msg.send(player, "icon-changed");
                         openIcons(player, slot, query, current);
@@ -292,31 +298,32 @@ public final class HomeDialogs {
                     .build());
             buttons.add(ActionButton.builder(Text.mm(cfg.iconsBackLabel))
                     .width(cfg.iconsControlWidth)
-                    .action(action(player, view -> openManage(player, slot)))
+                    .action(action(player, lifetime, view -> openManage(player, slot)))
                     .build());
-            if (current > 0) {
+            if (paged && current > 0) {
                 buttons.add(ActionButton.builder(Text.mm(cfg.iconsPrevLabel))
                         .width(cfg.iconsControlWidth)
-                        .action(action(player, view -> openIcons(player, slot, query, current - 1)))
+                        .action(action(player, lifetime, view -> openIcons(player, slot, query, current - 1)))
                         .build());
             }
-            if (current + 1 < pages) {
+            if (paged && current + 1 < pages) {
                 buttons.add(ActionButton.builder(Text.mm(cfg.iconsNextLabel))
                         .width(cfg.iconsControlWidth)
-                        .action(action(player, view -> openIcons(player, slot, query, current + 1)))
+                        .action(action(player, lifetime, view -> openIcons(player, slot, query, current + 1)))
                         .build());
             }
 
             for (int i = from; i < to; i++) {
                 IconCatalog.Entry entry = hits.get(i);
                 boolean isCurrent = entry.material() == home.icon();
-                buttons.add(ActionButton.builder(Component.translatable(entry.material().translationKey())
-                                .color(isCurrent ? selected : unselected)
-                                .decoration(TextDecoration.ITALIC, false))
+                Component name = Component.translatable(entry.material().translationKey())
+                        .color(isCurrent ? selected : unselected)
+                        .decoration(TextDecoration.ITALIC, false);
+                buttons.add(ActionButton.builder(withSprite(player, entry.material(), name))
                         .tooltip(Component.text(entry.id(), NamedTextColor.GRAY)
                                 .decoration(TextDecoration.ITALIC, false))
                         .width(cfg.iconsButtonWidth)
-                        .action(action(player, view -> {
+                        .action(action(player, lifetime, view -> {
                             this.operations.setIcon(owned, home, entry.material());
                             this.msg.send(player, "icon-changed");
                             openIcons(player, slot, query, current);
@@ -342,7 +349,8 @@ public final class HomeDialogs {
     // === buttons ===========================================================
 
     private ActionButton entryButton(Player player, CheeseConfig cfg, Home home) {
-        return ActionButton.builder(Text.mm(cfg.listEntryLabel, homePlaceholders(home)))
+        Component label = Text.mm(cfg.listEntryLabel, homePlaceholders(home));
+        return ActionButton.builder(cfg.spritesInList ? withSprite(player, home.icon(), label) : label)
                 .tooltip(Text.mm(cfg.listEntryTooltip, homePlaceholders(home)))
                 .width(cfg.listButtonWidth)
                 .action(action(player, view -> openManage(player, home.slot())))
@@ -385,11 +393,28 @@ public final class HomeDialogs {
         player.showDialog(dialog);
     }
 
+    /** Prefixes a label with the material's atlas sprite, when one is available. */
+    private Component withSprite(Player player, Material material, Component label) {
+        Component sprite = this.sprites.icon(material, player);
+        if (sprite == null) {
+            return label;
+        }
+        return Component.empty()
+                .decoration(TextDecoration.ITALIC, false)
+                .append(sprite)
+                .append(Component.space())
+                .append(label);
+    }
+
     private DialogAction action(Player player, Consumer<DialogResponseView> handler) {
+        return action(player, this.config.get().callbackLifetimeSeconds, handler);
+    }
+
+    private DialogAction action(Player player, int lifetimeSeconds, Consumer<DialogResponseView> handler) {
         CheeseConfig cfg = this.config.get();
         ClickCallback.Options options = ClickCallback.Options.builder()
                 .uses(cfg.callbackUses)
-                .lifetime(Duration.ofSeconds(cfg.callbackLifetimeSeconds))
+                .lifetime(Duration.ofSeconds(lifetimeSeconds))
                 .build();
         return DialogAction.customClick((view, audience) ->
                 player.getScheduler().run(this.plugin, task -> {

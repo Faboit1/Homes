@@ -18,6 +18,7 @@ import top.cheesesmp.cheesehomes.storage.HomeStorage;
 import top.cheesesmp.cheesehomes.storage.SqliteHomeStorage;
 import top.cheesesmp.cheesehomes.ui.HomeDialogs;
 import top.cheesesmp.cheesehomes.ui.IconCatalog;
+import top.cheesesmp.cheesehomes.ui.SpriteBridge;
 
 public final class CheeseHomesPlugin extends JavaPlugin {
 
@@ -28,6 +29,7 @@ public final class CheeseHomesPlugin extends JavaPlugin {
     private HomeService homeService;
     private TeleportService teleportService;
     private LimitResolver limitResolver;
+    private SpriteBridge spriteBridge;
 
     @Override
     public void onEnable() {
@@ -58,8 +60,10 @@ public final class CheeseHomesPlugin extends JavaPlugin {
         this.teleportService = new TeleportService(this, this.config::get, msg, this.limitResolver);
 
         HomeOperations operations = new HomeOperations(this.config::get, msg, this.limitResolver);
+        this.spriteBridge = new SpriteBridge(getLogger(), this.config.get().spritesEnabled);
         HomeDialogs dialogs = new HomeDialogs(this, this.config::get, this.catalog::get, msg,
-                this.homeService, operations, this.limitResolver, this.teleportService);
+                this.homeService, operations, this.limitResolver, this.teleportService,
+                this.spriteBridge);
 
         getServer().getPluginManager().registerEvents(
                 new PlayerListener(this.homeService, this.teleportService, this.limitResolver), this);
@@ -111,5 +115,8 @@ public final class CheeseHomesPlugin extends JavaPlugin {
         this.config.set(fresh);
         this.catalog.set(new IconCatalog(fresh));
         this.limitResolver.invalidateAll();
+        if (this.spriteBridge != null) {
+            this.spriteBridge.clear();
+        }
     }
 }

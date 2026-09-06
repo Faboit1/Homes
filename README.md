@@ -10,13 +10,32 @@ and every limit is driven by permissions.
   right region/entity/async scheduler. No `BukkitScheduler` anywhere.
 - **Dialog-driven UI.** A slot grid with a *Show More* expansion, a per-home management
   screen, an inline rename form, a delete confirmation, and a searchable icon picker
-  covering every obtainable item.
+  listing every obtainable item in one scrollable dialog.
+- **Real item sprites.** With [CheeseCore](https://github.com/Faboit1/CheeseCore) installed,
+  every icon button and every home in the list draws the item's actual texture, resolved
+  against the atlas layout of the client reading the dialog.
 - **Permission-tiered slots.** `cheesehomes.maxhomes.<amount>` — highest match wins.
 - **SQLite storage.** WAL mode, one dedicated I/O thread, prepared statements held open,
   reads served from an in-memory cache and writes batched behind it.
 - **ModernHome import.** Point it at an existing `storage.db` and it converts in one command.
 - **Everything is configurable.** Titles, labels, tooltips, colours, widths, columns,
   page sizes, warm-ups, cooldowns, name rules, icon allow/deny lists, and every message.
+
+## Item sprites (optional)
+
+Install [CheeseCore](https://github.com/Faboit1/CheeseCore) alongside this plugin and the
+dialogs stop being text-only: the icon picker shows each item's real texture next to its
+name, and every home in the list is prefixed with its own icon.
+
+Which atlas holds a given texture changed in 1.21.11 — items moved out of `blocks` into a
+new `items` atlas — so a sprite pinned to the wrong atlas renders as a purple-and-black
+square for half your players. CheeseCore owns that mapping per client version, and
+CheeseHomes asks it per viewer, so a 1.21.9 player and a 26.2 player both see a diamond.
+
+The dependency is optional and resolved at runtime. Without CheeseCore, or for a client
+older than 1.21.9, buttons quietly fall back to plain text. Turn it off entirely with
+`dialog.sprites.enabled: false`, or keep it in the picker only with
+`dialog.sprites.in-list: false`.
 
 ## Commands
 
