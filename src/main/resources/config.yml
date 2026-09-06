@@ -81,14 +81,15 @@ dialog:
   list:
     title: '<white>Homes'
     icon: 'minecraft:white_bed'
-    columns: 3
+    columns: 5
     button-width: 65
     # Progressive reveal, exactly like a "Show More" button: the menu opens at
     # the first size, each click of Show More moves to the next.
     expand-steps: [9, 27, 100]
     show-more-label: '<gray>Show More'
     show-more-tooltip: '<gray>Reveal more home slots'
-    show-more-width: 205
+    # Defaults to button-width so Show More lines up with the slot grid.
+    show-more-width: 65
     close-label: '<gray>Close'
     # <name> = home name, <index> = 1-based slot
     entry-label: '<white><name>'

@@ -168,12 +168,12 @@ public final class CheeseConfig {
 
         this.listTitle = cfg.getString("dialog.list.title", "<white>Homes");
         this.listIcon = material(cfg.getString("dialog.list.icon", "minecraft:white_bed"), Material.WHITE_BED);
-        this.listColumns = clamp(cfg.getInt("dialog.list.columns", 3), 1, 8);
+        this.listColumns = clamp(cfg.getInt("dialog.list.columns", 5), 1, 8);
         this.listButtonWidth = clamp(cfg.getInt("dialog.list.button-width", 65), 1, 1024);
         this.listExpandSteps = readSteps(cfg.getIntegerList("dialog.list.expand-steps"), this.hardCap);
         this.listShowMoreLabel = cfg.getString("dialog.list.show-more-label", "<gray>Show More");
         this.listShowMoreTooltip = cfg.getString("dialog.list.show-more-tooltip", "");
-        this.listShowMoreWidth = clamp(cfg.getInt("dialog.list.show-more-width", 205), 1, 1024);
+        this.listShowMoreWidth = clamp(cfg.getInt("dialog.list.show-more-width", this.listButtonWidth), 1, 1024);
         this.listCloseLabel = cfg.getString("dialog.list.close-label", "<gray>Close");
         this.listEntryLabel = cfg.getString("dialog.list.entry-label", "<white><name>");
         this.listEntryTooltip = cfg.getString("dialog.list.entry-tooltip", "");
