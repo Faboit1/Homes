@@ -21,9 +21,15 @@ public final class Home {
     private float yaw;
     private float pitch;
     private Material icon;
+    private String description;
 
     public Home(int slot, String name, String world, double x, double y, double z,
                 float yaw, float pitch, Material icon, long created) {
+        this(slot, name, world, x, y, z, yaw, pitch, icon, created, null);
+    }
+
+    public Home(int slot, String name, String world, double x, double y, double z,
+                float yaw, float pitch, Material icon, long created, @Nullable String description) {
         this.slot = slot;
         this.name = name;
         this.world = world;
@@ -34,6 +40,7 @@ public final class Home {
         this.pitch = pitch;
         this.icon = icon;
         this.created = created;
+        this.description = description;
     }
 
     public static Home of(int slot, String name, Location location, Material icon) {
@@ -84,6 +91,19 @@ public final class Home {
 
     public Material icon() {
         return this.icon;
+    }
+
+    /** {@code null} when the owner has not written one. */
+    public @Nullable String description() {
+        return this.description;
+    }
+
+    public void description(@Nullable String description) {
+        this.description = description == null || description.isBlank() ? null : description;
+    }
+
+    public boolean hasDescription() {
+        return this.description != null;
     }
 
     public void icon(Material icon) {

@@ -33,6 +33,7 @@ public final class CheeseCommands {
     public static final String PERM_SET = "cheesehomes.set";
     public static final String PERM_DELETE = "cheesehomes.delete";
     public static final String PERM_ADMIN = "cheesehomes.admin";
+    public static final String PERM_COORDINATES = "cheesehomes.coordinates";
 
     private final Plugin plugin;
     private final Supplier<CheeseConfig> config;
@@ -170,6 +171,60 @@ public final class CheeseCommands {
             @Override
             public String permission() {
                 return PERM_DELETE;
+            }
+        };
+    }
+
+    /**
+     * {@code /showhomecoordinates [true|false]} - a per-player switch for whether
+     * the menu prints coordinates, so a streamer can open their homes on camera
+     * without handing out their base.
+     */
+    public BasicCommand showCoordinatesCommand() {
+        return new BasicCommand() {
+            @Override
+            public void execute(CommandSourceStack source, String[] args) {
+                Player player = requirePlayer(source);
+                if (player == null) {
+                    return;
+                }
+                Boolean requested;
+                if (args.length == 0) {
+                    requested = null;
+                } else if (args[0].equalsIgnoreCase("true") || args[0].equalsIgnoreCase("on")
+                        || args[0].equalsIgnoreCase("show")) {
+                    requested = Boolean.TRUE;
+                } else if (args[0].equalsIgnoreCase("false") || args[0].equalsIgnoreCase("off")
+                        || args[0].equalsIgnoreCase("hide")) {
+                    requested = Boolean.FALSE;
+                } else {
+                    CheeseCommands.this.msg.send(player, "coordinates-usage");
+                    return;
+                }
+
+                withHomes(player, owned -> {
+                    CheeseConfig cfg = CheeseCommands.this.config.get();
+                    Boolean current = owned.showCoordinates();
+                    boolean effective = current == null ? cfg.showCoordinatesDefault : current;
+                    // No argument flips it, which is what people actually type.
+                    boolean next = requested == null ? !effective : requested;
+                    owned.setShowCoordinates(next);
+                    CheeseCommands.this.msg.send(player,
+                            next ? "coordinates-shown" : "coordinates-hidden");
+                });
+            }
+
+            @Override
+            public Collection<String> suggest(CommandSourceStack source, String[] args) {
+                if (args.length <= 1) {
+                    return startingWith(List.of("true", "false"), args.length == 0 ? "" : args[0]);
+                }
+                return List.of();
+            }
+
+            @Override
+            public String permission() {
+                return PERM_COORDINATES;
             }
         };
     }

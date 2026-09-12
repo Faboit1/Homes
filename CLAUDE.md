@@ -32,9 +32,15 @@ at load time from the `libraries` block in `paper-plugin.yml`.
 
 - **Folia.** Teleports must go through `teleportAsync`, and anything touching a
   player must run on that player's `EntityScheduler`. No `BukkitScheduler`.
-- **Config upgrades.** `getConfig().options().copyDefaults(true)` is what stops a
-  new message key showing up as `Missing message:` on an existing install. New
-  keys still need adding to `src/main/resources/config.yml` for fresh installs.
+- **Config upgrades.** `copyDefaults(true)` alone is NOT enough. Bukkit's
+  two-argument getters (`cfg.getString(path, "x")`) return the literal you pass
+  and never look at the defaults loaded from the jar, so a key added in a later
+  version stays missing on an existing `config.yml` and silently reads as your
+  inline fallback. `CheeseConfig` therefore reads through its own `str` /
+  `integer` / `bool` / `dbl` / `lng` / `section` helpers, which use the
+  one-argument getters and `isSet`. Add new keys to
+  `src/main/resources/config.yml` **and** read them through those helpers, then
+  test the upgrade by running against a `config.yml` from the previous tag.
 - **CheeseCore** is an optional runtime dependency reached by reflection in
   `ui/SpriteBridge.java`, not a build dependency. It must keep working with the
   plugin absent.

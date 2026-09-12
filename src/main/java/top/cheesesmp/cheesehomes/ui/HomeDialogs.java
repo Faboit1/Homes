@@ -7,6 +7,7 @@ import io.papermc.paper.registry.data.dialog.DialogBase;
 import io.papermc.paper.registry.data.dialog.action.DialogAction;
 import io.papermc.paper.registry.data.dialog.body.DialogBody;
 import io.papermc.paper.registry.data.dialog.input.DialogInput;
+import io.papermc.paper.registry.data.dialog.input.TextDialogInput;
 import io.papermc.paper.registry.data.dialog.type.DialogType;
 import java.time.Duration;
 import java.util.ArrayList;
@@ -86,13 +87,14 @@ public final class HomeDialogs {
                 highestUsed = Math.max(highestUsed, home.slot() + 1);
             }
             int limit = this.limits.maxHomes(player);
+            boolean coords = coordinatesVisible(owned, cfg);
             int visible = Math.min(cfg.hardCap, Math.max(steps[index], highestUsed));
 
             List<ActionButton> buttons = new ArrayList<>(visible + 1);
             for (int slot = 0; slot < visible; slot++) {
                 Home home = owned.bySlot(slot);
                 if (home != null) {
-                    buttons.add(entryButton(player, cfg, home));
+                    buttons.add(entryButton(player, cfg, home, coords));
                 } else if (slot < limit) {
                     buttons.add(emptyButton(player, cfg, slot, index));
                 } else {
@@ -132,16 +134,22 @@ public final class HomeDialogs {
                 return;
             }
             CheeseConfig cfg = this.config.get();
+            boolean coords = coordinatesVisible(owned, cfg);
 
-            List<DialogBody> body = new ArrayList<>(2);
+            List<DialogBody> body = new ArrayList<>(3);
             body.add(DialogBody.item(ItemStack.of(home.icon())).showTooltip(false).build());
-            if (!cfg.manageBody.isBlank()) {
-                body.add(DialogBody.plainMessage(Text.mm(cfg.manageBody, homePlaceholders(home))));
+            String location = coords ? cfg.manageBody : cfg.manageBodyHidden;
+            if (!location.isBlank()) {
+                body.add(DialogBody.plainMessage(Text.mm(location, homePlaceholders(home, coords, cfg))));
+            }
+            if (home.hasDescription() && !cfg.manageDescriptionBody.isBlank()) {
+                body.add(DialogBody.plainMessage(
+                        Text.mm(cfg.manageDescriptionBody, homePlaceholders(home, coords, cfg))));
             }
 
             List<ActionButton> buttons = List.of(
-                    ActionButton.builder(Text.mm(cfg.manageTeleportLabel, homePlaceholders(home)))
-                            .tooltip(Text.mm(cfg.manageTeleportTooltip, homePlaceholders(home)))
+                    ActionButton.builder(Text.mm(cfg.manageTeleportLabel, homePlaceholders(home, coords, cfg)))
+                            .tooltip(Text.mm(cfg.manageTeleportTooltip, homePlaceholders(home, coords, cfg)))
                             .width(cfg.manageWidth)
                             .action(action(player, view -> this.teleports.request(player, home)))
                             .build(),
@@ -155,6 +163,11 @@ public final class HomeDialogs {
                             .width(cfg.manageWidth)
                             .action(action(player, view -> openRename(player, slot)))
                             .build(),
+                    ActionButton.builder(Text.mm(cfg.manageDescriptionLabel))
+                            .tooltip(Text.mm(cfg.manageDescriptionTooltip))
+                            .width(cfg.manageWidth)
+                            .action(action(player, view -> openDescription(player, slot)))
+                            .build(),
                     ActionButton.builder(Text.mm(cfg.manageDeleteLabel))
                             .tooltip(Text.mm(cfg.manageDeleteTooltip))
                             .width(cfg.manageWidth)
@@ -165,7 +178,7 @@ public final class HomeDialogs {
                             .action(action(player, view -> openList(player, 0)))
                             .build());
 
-            show(player, DialogBase.builder(Text.mm(cfg.manageTitle, homePlaceholders(home)))
+            show(player, DialogBase.builder(Text.mm(cfg.manageTitle, homePlaceholders(home, coords, cfg)))
                             .canCloseWithEscape(true)
                             .pause(false)
                             .afterAction(DialogBase.DialogAfterAction.CLOSE)
@@ -183,6 +196,7 @@ public final class HomeDialogs {
                 return;
             }
             CheeseConfig cfg = this.config.get();
+            boolean coords = coordinatesVisible(owned, cfg);
 
             List<ActionButton> buttons = List.of(
                     ActionButton.builder(Text.mm(cfg.renameSaveLabel))
@@ -204,7 +218,7 @@ public final class HomeDialogs {
                             .action(action(player, view -> openManage(player, slot)))
                             .build());
 
-            show(player, DialogBase.builder(Text.mm(cfg.renameTitle, homePlaceholders(home)))
+            show(player, DialogBase.builder(Text.mm(cfg.renameTitle, homePlaceholders(home, coords, cfg)))
                             .canCloseWithEscape(true)
                             .pause(false)
                             .afterAction(DialogBase.DialogAfterAction.CLOSE)
@@ -219,6 +233,68 @@ public final class HomeDialogs {
         });
     }
 
+    /** Free-text note on a home, shown on hover in the list. */
+    public void openDescription(Player player, int slot) {
+        withHomes(player, owned -> {
+            Home home = owned.bySlot(slot);
+            if (home == null) {
+                openList(player, 0);
+                return;
+            }
+            CheeseConfig cfg = this.config.get();
+            boolean coords = coordinatesVisible(owned, cfg);
+
+            List<ActionButton> buttons = List.of(
+                    ActionButton.builder(Text.mm(cfg.describeSaveLabel))
+                            .width(cfg.describeWidth)
+                            .action(action(player, view -> {
+                                String typed = view.getText("newdescription");
+                                applyDescription(player, owned, home, typed);
+                                openManage(player, slot);
+                            }))
+                            .build(),
+                    ActionButton.builder(Text.mm(cfg.describeClearLabel))
+                            .width(cfg.describeWidth)
+                            .action(action(player, view -> {
+                                applyDescription(player, owned, home, null);
+                                openManage(player, slot);
+                            }))
+                            .build(),
+                    ActionButton.builder(Text.mm(cfg.describeCancelLabel))
+                            .width(cfg.describeWidth)
+                            .action(action(player, view -> openManage(player, slot)))
+                            .build());
+
+            show(player, DialogBase.builder(Text.mm(cfg.describeTitle, homePlaceholders(home, coords, cfg)))
+                            .canCloseWithEscape(true)
+                            .pause(false)
+                            .afterAction(DialogBase.DialogAfterAction.CLOSE)
+                            .body(List.of(DialogBody.item(ItemStack.of(home.icon())).showTooltip(false).build()))
+                            .inputs(List.of(DialogInput.text("newdescription", Text.mm(cfg.describeInputLabel))
+                                    .initial(home.description() == null ? "" : home.description())
+                                    .width(cfg.describeInputWidth)
+                                    .maxLength(cfg.maxDescriptionLength)
+                                    .multiline(TextDialogInput.MultilineOptions.create(
+                                            cfg.describeInputMaxLines, cfg.describeInputHeight))
+                                    .build()))
+                            .build(),
+                    DialogType.multiAction(buttons).columns(1).build());
+        });
+    }
+
+    private void applyDescription(Player player, PlayerHomes owned, Home home, String raw) {
+        CheeseConfig cfg = this.config.get();
+        String text = raw == null ? "" : raw.trim();
+        if (text.length() > cfg.maxDescriptionLength) {
+            this.msg.send(player, "description-too-long", Text.ph("max", cfg.maxDescriptionLength));
+            return;
+        }
+        home.description(text);
+        owned.markDirty();
+        this.msg.send(player, text.isEmpty() ? "description-cleared" : "description-set",
+                Text.ph("name", home.name()));
+    }
+
     public void openDelete(Player player, int slot) {
         withHomes(player, owned -> {
             Home home = owned.bySlot(slot);
@@ -227,6 +303,7 @@ public final class HomeDialogs {
                 return;
             }
             CheeseConfig cfg = this.config.get();
+            boolean coords = coordinatesVisible(owned, cfg);
 
             ActionButton confirm = ActionButton.builder(Text.mm(cfg.deleteConfirmLabel))
                     .width(cfg.manageWidth)
@@ -244,10 +321,10 @@ public final class HomeDialogs {
             List<DialogBody> body = new ArrayList<>(2);
             body.add(DialogBody.item(ItemStack.of(home.icon())).showTooltip(false).build());
             if (!cfg.deleteBody.isBlank()) {
-                body.add(DialogBody.plainMessage(Text.mm(cfg.deleteBody, homePlaceholders(home))));
+                body.add(DialogBody.plainMessage(Text.mm(cfg.deleteBody, homePlaceholders(home, coords, cfg))));
             }
 
-            show(player, DialogBase.builder(Text.mm(cfg.deleteTitle, homePlaceholders(home)))
+            show(player, DialogBase.builder(Text.mm(cfg.deleteTitle, homePlaceholders(home, coords, cfg)))
                             .canCloseWithEscape(true)
                             .pause(false)
                             .afterAction(DialogBase.DialogAfterAction.CLOSE)
@@ -266,6 +343,7 @@ public final class HomeDialogs {
                 return;
             }
             CheeseConfig cfg = this.config.get();
+            boolean coords = coordinatesVisible(owned, cfg);
             List<IconCatalog.Entry> hits = this.catalog.get().search(query);
 
             // page-size 0 means "everything in one dialog"; the client scrolls it.
@@ -331,7 +409,7 @@ public final class HomeDialogs {
                         .build());
             }
 
-            show(player, DialogBase.builder(Text.mm(cfg.iconsTitle, homePlaceholders(home)))
+            show(player, DialogBase.builder(Text.mm(cfg.iconsTitle, homePlaceholders(home, coords, cfg)))
                             .canCloseWithEscape(true)
                             .pause(false)
                             .afterAction(DialogBase.DialogAfterAction.CLOSE)
@@ -348,10 +426,10 @@ public final class HomeDialogs {
 
     // === buttons ===========================================================
 
-    private ActionButton entryButton(Player player, CheeseConfig cfg, Home home) {
-        Component label = Text.mm(cfg.listEntryLabel, homePlaceholders(home));
+    private ActionButton entryButton(Player player, CheeseConfig cfg, Home home, boolean coords) {
+        Component label = Text.mm(cfg.listEntryLabel, homePlaceholders(home, coords, cfg));
         return ActionButton.builder(cfg.spritesInList ? withSprite(player, home.icon(), label) : label)
-                .tooltip(Text.mm(cfg.listEntryTooltip, homePlaceholders(home)))
+                .tooltip(entryTooltip(cfg, home, coords))
                 .width(cfg.listButtonWidth)
                 .action(action(player, view -> openManage(player, home.slot())))
                 .build();
@@ -376,6 +454,16 @@ public final class HomeDialogs {
                     }
                 }))
                 .build();
+    }
+
+    /** The list tooltip, with the description appended when there is one. */
+    private Component entryTooltip(CheeseConfig cfg, Home home, boolean coords) {
+        Component tooltip = Text.mm(cfg.listEntryTooltip, homePlaceholders(home, coords, cfg));
+        if (home.hasDescription() && !cfg.listEntryTooltipDescription.isBlank()) {
+            tooltip = tooltip.append(
+                    Text.mm(cfg.listEntryTooltipDescription, homePlaceholders(home, coords, cfg)));
+        }
+        return tooltip;
     }
 
     /** No action at all - the client renders it, clicking does nothing. */
@@ -444,16 +532,31 @@ public final class HomeDialogs {
         });
     }
 
-    private static net.kyori.adventure.text.minimessage.tag.resolver.TagResolver[] homePlaceholders(Home home) {
+    /**
+     * Masking happens here rather than at each call site, so a coordinate cannot
+     * leak through a label or tooltip an admin wrote themselves.
+     */
+    private static net.kyori.adventure.text.minimessage.tag.resolver.TagResolver[] homePlaceholders(
+            Home home, boolean showCoordinates, CheeseConfig cfg) {
+        String x = showCoordinates ? Long.toString(Math.round(home.x())) : cfg.hiddenCoordinate;
+        String y = showCoordinates ? Long.toString(Math.round(home.y())) : cfg.hiddenCoordinate;
+        String z = showCoordinates ? Long.toString(Math.round(home.z())) : cfg.hiddenCoordinate;
         return new net.kyori.adventure.text.minimessage.tag.resolver.TagResolver[]{
                 Text.ph("name", home.name()),
                 Text.ph("index", home.slot() + 1),
                 Text.ph("world", home.world()),
-                Text.ph("x", Long.toString(Math.round(home.x()))),
-                Text.ph("y", Long.toString(Math.round(home.y()))),
-                Text.ph("z", Long.toString(Math.round(home.z()))),
-                Text.ph("icon", home.icon().getKey().toString())
+                Text.ph("x", x),
+                Text.ph("y", y),
+                Text.ph("z", z),
+                Text.ph("icon", home.icon().getKey().toString()),
+                Text.ph("description", home.description() == null ? "" : home.description())
         };
+    }
+
+    /** The player's own choice, falling back to the configured default. */
+    private static boolean coordinatesVisible(PlayerHomes owned, CheeseConfig cfg) {
+        Boolean choice = owned.showCoordinates();
+        return choice == null ? cfg.showCoordinatesDefault : choice;
     }
 
     private static TextColor color(String raw, TextColor fallback) {

@@ -11,6 +11,10 @@ and every limit is driven by permissions.
 - **Dialog-driven UI.** A slot grid with a *Show More* expansion, a per-home management
   screen, an inline rename form, a delete confirmation, and a searchable icon picker
   listing every obtainable item in one scrollable dialog.
+- **Per-home descriptions.** A free-text note on each home, shown on hover in the
+  list and on the home's own screen, edited from a multi-line box in that screen.
+- **Streamer mode.** `/showhomecoordinates false` hides coordinates from the menu for
+  that player only, so opening your homes on camera does not hand out your base.
 - **Real item sprites.** With [CheeseCore](https://github.com/Faboit1/CheeseCore) installed,
   every icon button and every home in the list draws the item's actual texture, resolved
   against the atlas layout of the client reading the dialog.
@@ -20,6 +24,29 @@ and every limit is driven by permissions.
 - **ModernHome import.** Point it at an existing `storage.db` and it converts in one command.
 - **Everything is configurable.** Titles, labels, tooltips, colours, widths, columns,
   page sizes, warm-ups, cooldowns, name rules, icon allow/deny lists, and every message.
+
+## Hiding coordinates
+
+`/showhomecoordinates false` is a per-player switch, stored alongside that player's
+homes, for anyone who would rather not broadcast where their base is.
+
+The masking happens where the `<x>`, `<y>` and `<z>` placeholders are resolved, not
+at each screen, so a coordinate cannot leak through a label or tooltip you wrote
+yourself — they render as `privacy.hidden-coordinate` (`???` by default) everywhere.
+The home screen additionally swaps `dialog.manage.body` for
+`dialog.manage.body-hidden`, which by default prints the world and nothing else.
+
+`privacy.show-coordinates-default` decides what a player who has never chosen sees.
+
+## Descriptions
+
+Each home can carry a note — what is stored there, who it is shared with, whatever.
+It shows on hover in the homes list and as a line on the home's own screen, and is
+edited from the **Description** button there (multi-line, `homes.max-description-length`
+characters, saving an empty box clears it).
+
+Both the tooltip line and the body line are configurable and are omitted entirely
+when a home has no description.
 
 ## Item sprites (optional)
 
@@ -45,6 +72,7 @@ older than 1.21.9, buttons quietly fall back to plain text. Turn it off entirely
 | `/home [name]` | `cheesehomes.use` | Teleport to a home, or open the dialog with no argument |
 | `/sethome [name]` (`/createhome`) | `cheesehomes.set` | Set a home here, or move an existing one |
 | `/delhome <name>` (`/removehome`) | `cheesehomes.delete` | Delete a home |
+| `/showhomecoordinates [true\|false]` (`/homecoords`) | `cheesehomes.coordinates` | Show or hide coordinates in your own menu; no argument toggles |
 | `/cheesehomes reload` | `cheesehomes.admin` | Re-read `config.yml` |
 | `/cheesehomes info` | `cheesehomes.admin` | Version, cached players, stored homes |
 | `/cheesehomes limits` | `cheesehomes.admin` | Show your own resolved slots / warm-up / cooldown |

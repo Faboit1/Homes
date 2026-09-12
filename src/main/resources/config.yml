@@ -63,12 +63,23 @@ worlds:
   require-per-world-permission: false
   per-world-permission-prefix: 'cheesehomes.world.'
 
+privacy:
+  # Whether coordinates show in the homes menu for a player who has never
+  # chosen. Each player flips their own with /showhomecoordinates <true|false> -
+  # meant for streamers who would rather not broadcast their base.
+  show-coordinates-default: true
+  # What <x> <y> <z> render as once a player has turned coordinates off. This
+  # substitution happens wherever those placeholders appear, so a coordinate
+  # cannot leak through a custom label or tooltip either.
+  hidden-coordinate: '???'
+
 homes:
   # Default icon for a freshly created home.
   default-icon: 'minecraft:white_bed'
   # Auto-generated name for a new home: <index> is the 1-based slot number.
   default-name: 'Home <index>'
   max-name-length: 24
+  max-description-length: 128
   # Names are matched case-insensitively; this is the allowed character set.
   name-pattern: '^[A-Za-z0-9 _\-]+$'
 
@@ -103,6 +114,8 @@ dialog:
     # <name> = home name, <index> = 1-based slot
     entry-label: '<white><name>'
     entry-tooltip: '<white><name><newline><gray>Click to manage'
+    # Appended to the tooltip only when the home has a description.
+    entry-tooltip-description: '<newline><newline><italic><gray><description>'
     empty-label: '<dark_gray>New Home'
     empty-tooltip: '<gray>Click to set a new home here'
     locked-label: '<red>Locked'
@@ -110,8 +123,12 @@ dialog:
 
   manage:
     title: '<white><name>'
-    # <name> <world> <x> <y> <z> <index> are available here.
+    # <name> <world> <x> <y> <z> <index> <description> are available here.
     body: '<gray><world> <dark_gray>| <gray><x>, <y>, <z>'
+    # Used instead of `body` for a player who has coordinates turned off.
+    body-hidden: '<gray><world>'
+    # An extra body line, shown only when the home has a description.
+    description-body: '<white><description>'
     width: 140
     teleport-label: '<green>Teleport'
     teleport-tooltip: '<gray>Warp to <white><name>'
@@ -119,6 +136,8 @@ dialog:
     icon-tooltip: '<gray>Pick a new icon for this home'
     rename-label: '<white>Rename'
     rename-tooltip: '<gray>Give this home a new name'
+    description-label: '<white>Description'
+    description-tooltip: '<gray>Write a note about this home'
     delete-label: '<red>Delete'
     delete-tooltip: '<gray>Remove this home'
     back-label: '<gray>Back'
@@ -128,6 +147,18 @@ dialog:
     input-label: '<white>New Name'
     input-width: 220
     save-label: '<green>Save'
+    cancel-label: '<gray>Cancel'
+    width: 140
+
+  description:
+    title: '<white>Describe <name>'
+    input-label: '<white>Description'
+    input-width: 300
+    # A multi-line box. Set max-lines to 1 for a plain single-line field.
+    input-max-lines: 4
+    input-height: 80
+    save-label: '<green>Save'
+    clear-label: '<red>Clear'
     cancel-label: '<gray>Cancel'
     width: 140
 
@@ -208,6 +239,12 @@ messages:
   storage-error: '<red>Your homes could not be loaded. Please tell an admin.'
   still-loading: '<gray>Still loading your homes, try again in a moment.'
   unknown-icon: '<red>Unknown item: <white><icon>'
+  description-set: '<green>Updated the description for <white><name><green>.'
+  description-cleared: '<green>Cleared the description for <white><name><green>.'
+  description-too-long: '<red>Descriptions can be at most <white><max><red> characters.'
+  coordinates-shown: '<green>Coordinates are now <white>visible<green> in your homes menu.'
+  coordinates-hidden: '<green>Coordinates are now <white>hidden<green> in your homes menu.'
+  coordinates-usage: '<gray>Usage: <white>/showhomecoordinates <true|false>'
   import-usage: '<gray>Usage: <white>/cheesehomes import modernhome [overwrite]'
   import-missing: '<red>No database found at <white><path><red>.'
   import-started: '<gray>Importing from <white><path><gray> - this runs off the main thread.'
