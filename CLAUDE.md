@@ -16,6 +16,15 @@ follow-up — every jar handed over should be tellable apart by its version alon
 - **minor** (`1.0.1` → `1.1.0`) — new commands, screens or config sections
 - **major** (`1.1.0` → `2.0.0`) — anything that breaks an existing config or database
 
+## Pull requests
+
+Standing instruction from the repo owner: **merge your own PRs here as soon as
+CI is green.** Don't ask first, don't wait for a review, don't leave them
+sitting as drafts.
+
+Scope: PRs you opened on this repository. Never merge someone else's PR, and
+never merge one that is red or has a conflict — fix it first.
+
 ## Building
 
 ```bash
