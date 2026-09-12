@@ -77,6 +77,8 @@ public final class CheeseHomesPlugin extends JavaPlugin {
             registrar.register("home", "Teleport to a home, or open the menu", List.of(), commands.homeCommand());
             registrar.register("sethome", "Set a home where you stand", List.of("createhome"), commands.setHomeCommand());
             registrar.register("delhome", "Delete one of your homes", List.of("removehome"), commands.delHomeCommand());
+            registrar.register("showhomecoordinates", "Show or hide coordinates in your homes menu",
+                    List.of("homecoords", "homecoordinates"), commands.showCoordinatesCommand());
             registrar.register("cheesehomes", "CheeseHomes administration", List.of("chomes"), commands.adminCommand());
         });
 

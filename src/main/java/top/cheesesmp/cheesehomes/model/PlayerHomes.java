@@ -25,6 +25,9 @@ public final class PlayerHomes {
 
     private volatile long lastTouched = System.nanoTime();
 
+    /** {@code null} means "whatever the config default is". */
+    private volatile Boolean showCoordinates;
+
     public PlayerHomes(UUID owner) {
         this.owner = owner;
     }
@@ -52,6 +55,20 @@ public final class PlayerHomes {
 
     public long lastTouched() {
         return this.lastTouched;
+    }
+
+    public @Nullable Boolean showCoordinates() {
+        return this.showCoordinates;
+    }
+
+    /** Sets without marking dirty - used while loading from storage. */
+    public void showCoordinates(@Nullable Boolean value) {
+        this.showCoordinates = value;
+    }
+
+    public void setShowCoordinates(@Nullable Boolean value) {
+        this.showCoordinates = value;
+        markDirty();
     }
 
     public int size() {

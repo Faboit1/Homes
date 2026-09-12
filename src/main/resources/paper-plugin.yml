@@ -28,6 +28,9 @@ permissions:
   cheesehomes.delete:
     description: Delete one of your own homes
     default: true
+  cheesehomes.coordinates:
+    description: Toggle whether the homes menu shows coordinates
+    default: true
   cheesehomes.admin:
     description: Reload CheeseHomes and read its status
     default: op

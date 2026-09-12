@@ -45,16 +45,28 @@ public final class SqliteHomeStorage implements HomeStorage {
               pitch   REAL    NOT NULL,
               icon    TEXT    NOT NULL,
               created INTEGER NOT NULL,
+              description TEXT,
               PRIMARY KEY (owner, slot)
+            )""";
+    private static final String CREATE_SETTINGS = """
+            CREATE TABLE IF NOT EXISTS player_settings (
+              owner            TEXT PRIMARY KEY,
+              show_coordinates INTEGER
             )""";
     private static final String CREATE_INDEX =
             "CREATE INDEX IF NOT EXISTS idx_homes_owner ON homes(owner)";
     private static final String SELECT =
-            "SELECT slot,name,world,x,y,z,yaw,pitch,icon,created FROM homes WHERE owner=?";
+            "SELECT slot,name,world,x,y,z,yaw,pitch,icon,created,description FROM homes WHERE owner=?";
     private static final String DELETE_OWNER = "DELETE FROM homes WHERE owner=?";
     private static final String EXISTS = "SELECT 1 FROM homes WHERE owner=? LIMIT 1";
     private static final String INSERT =
-            "INSERT INTO homes(owner,slot,name,world,x,y,z,yaw,pitch,icon,created) VALUES(?,?,?,?,?,?,?,?,?,?,?)";
+            "INSERT INTO homes(owner,slot,name,world,x,y,z,yaw,pitch,icon,created,description) "
+                    + "VALUES(?,?,?,?,?,?,?,?,?,?,?,?)";
+    private static final String SELECT_SETTINGS =
+            "SELECT show_coordinates FROM player_settings WHERE owner=?";
+    private static final String UPSERT_SETTINGS =
+            "INSERT INTO player_settings(owner,show_coordinates) VALUES(?,?) "
+                    + "ON CONFLICT(owner) DO UPDATE SET show_coordinates=excluded.show_coordinates";
 
     private final File file;
     private final int busyTimeoutMs;
@@ -67,6 +79,8 @@ public final class SqliteHomeStorage implements HomeStorage {
     private PreparedStatement deleteOwner;
     private PreparedStatement insert;
     private PreparedStatement exists;
+    private PreparedStatement selectSettings;
+    private PreparedStatement upsertSettings;
 
     public SqliteHomeStorage(File file, int busyTimeoutMs, Logger logger, Supplier<Material> fallbackIcon) {
         this.file = file;
@@ -103,11 +117,15 @@ public final class SqliteHomeStorage implements HomeStorage {
             try (Statement statement = this.connection.createStatement()) {
                 statement.executeUpdate(CREATE_HOMES);
                 statement.executeUpdate(CREATE_INDEX);
+                statement.executeUpdate(CREATE_SETTINGS);
             }
+            migrate();
             this.select = this.connection.prepareStatement(SELECT);
             this.deleteOwner = this.connection.prepareStatement(DELETE_OWNER);
             this.insert = this.connection.prepareStatement(INSERT);
             this.exists = this.connection.prepareStatement(EXISTS);
+            this.selectSettings = this.connection.prepareStatement(SELECT_SETTINGS);
+            this.upsertSettings = this.connection.prepareStatement(UPSERT_SETTINGS);
             return null;
         }).get(30L, TimeUnit.SECONDS);
     }
@@ -207,6 +225,8 @@ public final class SqliteHomeStorage implements HomeStorage {
                 closeQuietly(this.deleteOwner);
                 closeQuietly(this.insert);
                 closeQuietly(this.exists);
+                closeQuietly(this.selectSettings);
+                closeQuietly(this.upsertSettings);
                 if (this.connection != null) {
                     try (Statement statement = this.connection.createStatement()) {
                         // Fold the WAL back into the database file so a copied
@@ -228,9 +248,39 @@ public final class SqliteHomeStorage implements HomeStorage {
 
     // -----------------------------------------------------------------------
 
+    /**
+     * Brings a database written by an older version up to date. SQLite has no
+     * "ADD COLUMN IF NOT EXISTS", so the column list is read first.
+     */
+    private void migrate() throws SQLException {
+        boolean hasDescription = false;
+        try (Statement statement = this.connection.createStatement();
+             ResultSet columns = statement.executeQuery("PRAGMA table_info(homes)")) {
+            while (columns.next()) {
+                if ("description".equalsIgnoreCase(columns.getString("name"))) {
+                    hasDescription = true;
+                    break;
+                }
+            }
+        }
+        if (!hasDescription) {
+            try (Statement statement = this.connection.createStatement()) {
+                statement.executeUpdate("ALTER TABLE homes ADD COLUMN description TEXT");
+            }
+            this.logger.info("Added the description column to homes.db");
+        }
+    }
+
     private PlayerHomes readOwner(UUID owner) throws SQLException {
         PlayerHomes homes = new PlayerHomes(owner);
         this.select.setString(1, owner.toString());
+        this.selectSettings.setString(1, owner.toString());
+        try (ResultSet settings = this.selectSettings.executeQuery()) {
+            if (settings.next()) {
+                int value = settings.getInt(1);
+                homes.showCoordinates(settings.wasNull() ? null : value != 0);
+            }
+        }
         try (ResultSet rows = this.select.executeQuery()) {
             while (rows.next()) {
                 Material icon = Material.matchMaterial(rows.getString(9));
@@ -247,7 +297,8 @@ public final class SqliteHomeStorage implements HomeStorage {
                         rows.getFloat(7),
                         rows.getFloat(8),
                         icon,
-                        rows.getLong(10)));
+                        rows.getLong(10),
+                        rows.getString(11)));
             }
         }
         return homes;
@@ -260,6 +311,16 @@ public final class SqliteHomeStorage implements HomeStorage {
      */
     private void writeOwner(PlayerHomes homes) throws SQLException {
         String owner = homes.owner().toString();
+
+        this.upsertSettings.setString(1, owner);
+        Boolean showCoordinates = homes.showCoordinates();
+        if (showCoordinates == null) {
+            this.upsertSettings.setNull(2, java.sql.Types.INTEGER);
+        } else {
+            this.upsertSettings.setInt(2, showCoordinates ? 1 : 0);
+        }
+        this.upsertSettings.executeUpdate();
+
         this.deleteOwner.setString(1, owner);
         this.deleteOwner.executeUpdate();
 
@@ -278,6 +339,7 @@ public final class SqliteHomeStorage implements HomeStorage {
             this.insert.setFloat(9, home.pitch());
             this.insert.setString(10, home.icon().getKey().toString());
             this.insert.setLong(11, home.created());
+            this.insert.setString(12, home.description());
             this.insert.addBatch();
         }
         this.insert.executeBatch();
