@@ -144,6 +144,14 @@ public final class CheeseConfig {
     public final Set<String> iconsAllowed;
     public final Set<String> iconsDenied;
 
+    public final String adminListTitle;
+    public final String adminListBody;
+    public final String adminEmptyTooltip;
+    public final String adminManageBody;
+    public final String adminTeleportTooltip;
+    public final String adminMoveLabel;
+    public final String adminMoveTooltip;
+
     // --- import ------------------------------------------------------------
     public final String modernHomePath;
     public final String modernHomeServerId;
@@ -273,6 +281,14 @@ public final class CheeseConfig {
         this.iconsUnselectedColor = str(cfg, "dialog.icons.unselected-color", "white");
         this.iconsAllowed = lowerSet(cfg.getStringList("dialog.icons.allowed"));
         this.iconsDenied = lowerSet(cfg.getStringList("dialog.icons.denied"));
+
+        this.adminListTitle = str(cfg, "dialog.admin.list-title", "<white><owner>'s Homes");
+        this.adminListBody = str(cfg, "dialog.admin.list-body", "");
+        this.adminEmptyTooltip = str(cfg, "dialog.admin.empty-tooltip", "");
+        this.adminManageBody = str(cfg, "dialog.admin.manage-body", "");
+        this.adminTeleportTooltip = str(cfg, "dialog.admin.teleport-tooltip", "");
+        this.adminMoveLabel = str(cfg, "dialog.admin.move-label", "<yellow>Move Here");
+        this.adminMoveTooltip = str(cfg, "dialog.admin.move-tooltip", "");
 
         this.modernHomePath = str(cfg, "import.modernhome.path", "plugins/ModernHome/storage.db");
         this.modernHomeServerId = str(cfg, "import.modernhome.server-id", "");

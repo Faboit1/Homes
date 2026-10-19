@@ -3,7 +3,7 @@ plugins {
 }
 
 group = "top.cheesesmp"
-version = "1.1.1"
+version = "1.2.0"
 description = "Folia-native, dialog-driven homes for CheeseSMP"
 
 repositories {
