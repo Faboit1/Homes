@@ -198,6 +198,20 @@ dialog:
     denied:
       - 'minecraft:air'
 
+  # Used by /homeadmin see <player>. Every other screen is shared with the
+  # player's own menu; <owner> is the player whose homes are on screen and works
+  # in any dialog string. Admins always see coordinates, every slot up to
+  # limits.hard-cap is open to them, and teleports skip warm-up and cooldown.
+  admin:
+    list-title: "<red>[Admin] <white><owner>'s Homes"
+    # <count> = homes set, <limit> = the owner's slot count ("?" while offline)
+    list-body: '<gray>Viewing <white><owner><gray> <dark_gray>| <white><count><gray>/<white><limit> <gray>slots used'
+    empty-tooltip: '<gray>Click to set a home for <white><owner><gray> where you stand'
+    manage-body: '<gray>Owner: <white><owner>'
+    teleport-tooltip: '<gray>Teleport instantly - no warm-up or cooldown'
+    move-label: '<yellow>Move Here'
+    move-tooltip: '<gray>Move <white><name><gray> to where you are standing'
+
 import:
   modernhome:
     # Path to ModernHome's database, relative to the server root.
@@ -250,3 +264,21 @@ messages:
   import-started: '<gray>Importing from <white><path><gray> - this runs off the main thread.'
   import-done: '<green>Imported <white><homes><green> homes for <white><owners><green> players. <gray>Skipped <white><skipped><gray> players who already had homes, dropped <white><dropped><gray> unusable rows.'
   import-failed: '<red>Import failed: <white><error>'
+  # /homeadmin
+  admin-usage: '<gray>Usage: <white>/homeadmin <see|list|tp|set|delete|rename|clear|limits> <player> [home]'
+  admin-unknown-player: '<red>No player called <white><player><red> has ever joined.'
+  admin-no-homes: '<white><player><gray> has no homes.'
+  admin-home-not-found: '<white><player><red> has no home called <white><name><red>.'
+  admin-list-header: "<white><player><gray>'s homes <dark_gray>(<white><count><dark_gray>)<gray>:"
+  # One line per home; clicking it runs /homeadmin tp.
+  admin-list-entry: '<dark_gray>- <white><name> <gray><world> <dark_gray>| <gray><x>, <y>, <z>'
+  admin-list-hover: '<gray>Click to teleport to <white><name>'
+  admin-teleporting: "<gray>Teleporting to <white><player><gray>'s home <white><name><gray>."
+  admin-home-set: '<green>Set home <white><name><green> for <white><player><green>.'
+  admin-home-moved: "<green>Moved <white><player><green>'s home <white><name><green> to you."
+  admin-home-deleted: "<green>Deleted <white><player><green>'s home <white><name><green>."
+  admin-home-renamed: "<green>Renamed <white><player><green>'s home to <white><name><green>."
+  admin-full: '<red><white><player><red> already has every slot up to the hard cap filled.'
+  admin-clear-confirm: "<red>This deletes all <white><count><red> of <white><player><red>'s homes. Run <white>/homeadmin clear <player> confirm<red> to go ahead."
+  admin-cleared: "<green>Deleted all <white><count><green> of <white><player><green>'s homes."
+  admin-limits: '<white><player><gray>: <white><count><gray>/<white><limit><gray> slots used'

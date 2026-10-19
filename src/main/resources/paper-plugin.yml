@@ -34,6 +34,12 @@ permissions:
   cheesehomes.admin:
     description: Reload CheeseHomes and read its status
     default: op
+  cheesehomes.admin.see:
+    description: /homeadmin see, list, tp and limits - look at and visit anyone's homes
+    default: op
+  cheesehomes.admin.edit:
+    description: /homeadmin set, delete, rename, clear and the edit buttons in the admin menu
+    default: op
   cheesehomes.maxhomes.unlimited:
     description: Grants the configured hard cap of home slots
     default: false

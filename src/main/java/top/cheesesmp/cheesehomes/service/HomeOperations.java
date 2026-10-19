@@ -1,5 +1,6 @@
 package top.cheesesmp.cheesehomes.service;
 
+import java.util.List;
 import java.util.Locale;
 import java.util.function.Supplier;
 import org.bukkit.Location;
@@ -104,6 +105,59 @@ public final class HomeOperations {
         Home home = Home.of(slot, name, location, cfg.defaultIcon);
         homes.add(home);
         return new Result(Status.OK, home);
+    }
+
+    /**
+     * Admin override of {@link #createInSlot}: the slot only has to be free and
+     * under the hard cap - the owner's own limit and the world rules do not apply.
+     */
+    public Result forceCreateInSlot(PlayerHomes homes, int slot, Location location) {
+        CheeseConfig cfg = this.config.get();
+        if (slot < 0 || slot >= cfg.hardCap) {
+            return new Result(Status.LIMIT, null);
+        }
+        if (homes.bySlot(slot) != null) {
+            return new Result(Status.NAME_TAKEN, homes.bySlot(slot));
+        }
+        String name = uniqueName(homes, cfg.defaultNameFormat.replace("<index>", Integer.toString(slot + 1)));
+        Home home = Home.of(slot, name, location, cfg.defaultIcon);
+        homes.add(home);
+        return new Result(Status.OK, home);
+    }
+
+    /** Admin override of {@link #setOrUpdate}, held only to the hard cap. */
+    public Result forceSet(PlayerHomes homes, String name, Location location) {
+        CheeseConfig cfg = this.config.get();
+        Status nameCheck = checkName(name);
+        if (nameCheck != Status.OK) {
+            return new Result(nameCheck, null);
+        }
+        Home existing = homes.byName(name);
+        if (existing != null) {
+            moveTo(homes, existing, location);
+            return new Result(Status.UPDATED, existing);
+        }
+        int slot = homes.firstFreeSlot(cfg.hardCap);
+        if (slot < 0) {
+            return new Result(Status.LIMIT, null);
+        }
+        Home home = Home.of(slot, name, location, cfg.defaultIcon);
+        homes.add(home);
+        return new Result(Status.OK, home);
+    }
+
+    public void moveTo(PlayerHomes homes, Home home, Location location) {
+        home.moveTo(location);
+        homes.markDirty();
+    }
+
+    /** Deletes every home the owner has; returns how many went. */
+    public int clear(PlayerHomes homes) {
+        List<Home> all = homes.ordered();
+        for (Home home : all) {
+            homes.remove(home);
+        }
+        return all.size();
     }
 
     public Result rename(PlayerHomes homes, Home home, String rawName) {

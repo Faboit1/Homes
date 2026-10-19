@@ -105,7 +105,22 @@ public final class TeleportService {
         }, () -> this.pending.remove(id, warmupState), 4L, 4L);
     }
 
+    /** Admin teleport: no warm-up, no cooldown, and it does not start one either. */
+    public void teleportNow(Player player, Home home) {
+        World world = Bukkit.getWorld(home.world());
+        if (world == null) {
+            this.msg.send(player, "world-missing", Text.ph("world", home.world()));
+            return;
+        }
+        cancel(player.getUniqueId(), null);
+        teleport(player, home, world, false);
+    }
+
     private void teleport(Player player, Home home, World world) {
+        teleport(player, home, world, true);
+    }
+
+    private void teleport(Player player, Home home, World world, boolean startCooldown) {
         Location destination = home.toLocation(world);
         if (destination == null) {
             return;
@@ -122,7 +137,9 @@ public final class TeleportService {
                                 return;
                             }
                             if (Boolean.TRUE.equals(success)) {
-                                this.lastTeleport.put(player.getUniqueId(), System.nanoTime());
+                                if (startCooldown) {
+                                    this.lastTeleport.put(player.getUniqueId(), System.nanoTime());
+                                }
                                 this.msg.send(player, "teleported", Text.ph("name", home.name()));
                             } else {
                                 // Refused by the server: dead, sleeping, riding

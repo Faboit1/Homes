@@ -13,13 +13,18 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
+import java.util.UUID;
+import java.util.function.BiConsumer;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
+import java.util.logging.Level;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.format.NamedTextColor;
 import net.kyori.adventure.text.format.TextColor;
 import net.kyori.adventure.text.format.TextDecoration;
 import net.kyori.adventure.text.event.ClickCallback;
+import net.kyori.adventure.text.minimessage.tag.resolver.TagResolver;
+import org.bukkit.Bukkit;
 import org.bukkit.Material;
 import org.bukkit.entity.Player;
 import org.bukkit.inventory.ItemStack;
@@ -46,8 +51,31 @@ import top.cheesesmp.cheesehomes.util.Text;
  * <p>Every callback hops onto the clicking player's entity scheduler before it
  * touches anything, so the handlers are Folia-safe no matter which thread the
  * click arrives on.
+ *
+ * <p>The same screens serve {@code /homeadmin see}: a {@link Target} says whose
+ * homes are on screen and who is looking. Callbacks that change something look
+ * the home up again instead of trusting what was captured at render time,
+ * because an offline owner's homes can be evicted from the cache while an admin
+ * still has the dialog open.
  */
 public final class HomeDialogs {
+
+    /**
+     * Who is looking at whose homes. For a player's own menu both are the same
+     * person; for an admin, {@code admin} lifts slot limits and the warm-up, and
+     * {@code canEdit} decides whether anything beyond looking and teleporting is
+     * offered.
+     */
+    public record Target(Player viewer, UUID owner, String ownerName, boolean admin, boolean canEdit) {
+
+        public static Target self(Player player) {
+            return new Target(player, player.getUniqueId(), player.getName(), false, true);
+        }
+
+        public static Target admin(Player viewer, UUID owner, String ownerName, boolean canEdit) {
+            return new Target(viewer, owner, ownerName, true, canEdit);
+        }
+    }
 
     private final Plugin plugin;
     private final Supplier<CheeseConfig> config;
@@ -75,9 +103,15 @@ public final class HomeDialogs {
 
     // === screens ===========================================================
 
-    /** The home grid. {@code step} indexes {@code dialog.list.expand-steps}. */
+    /** The player's own home grid. {@code step} indexes {@code dialog.list.expand-steps}. */
     public void openList(Player player, int step) {
-        withHomes(player, owned -> {
+        openList(Target.self(player), step);
+    }
+
+    /** The home grid. {@code step} indexes {@code dialog.list.expand-steps}. */
+    public void openList(Target target, int step) {
+        Player player = target.viewer();
+        withHomes(target, owned -> {
             CheeseConfig cfg = this.config.get();
             int[] steps = cfg.listExpandSteps;
             int index = Math.max(0, Math.min(step, steps.length - 1));
@@ -86,17 +120,19 @@ public final class HomeDialogs {
             for (Home home : owned.all()) {
                 highestUsed = Math.max(highestUsed, home.slot() + 1);
             }
-            int limit = this.limits.maxHomes(player);
-            boolean coords = coordinatesVisible(owned, cfg);
+            // An admin is not held to the owner's slot count - every slot up to
+            // the hard cap is theirs to fill.
+            int limit = target.admin() ? cfg.hardCap : this.limits.maxHomes(player);
+            boolean coords = coordinatesVisible(target, owned, cfg);
             int visible = Math.min(cfg.hardCap, Math.max(steps[index], highestUsed));
 
             List<ActionButton> buttons = new ArrayList<>(visible + 1);
             for (int slot = 0; slot < visible; slot++) {
                 Home home = owned.bySlot(slot);
                 if (home != null) {
-                    buttons.add(entryButton(player, cfg, home, coords));
+                    buttons.add(entryButton(target, cfg, home, coords));
                 } else if (slot < limit) {
-                    buttons.add(emptyButton(player, cfg, slot, index));
+                    buttons.add(emptyButton(target, cfg, slot, index));
                 } else {
                     buttons.add(lockedButton(cfg));
                 }
@@ -106,17 +142,25 @@ public final class HomeDialogs {
                 buttons.add(ActionButton.builder(Text.mm(cfg.listShowMoreLabel))
                         .tooltip(Text.mm(cfg.listShowMoreTooltip))
                         .width(cfg.listShowMoreWidth)
-                        .action(action(player, view -> openList(player, next)))
+                        .action(action(player, view -> openList(target, next)))
                         .build());
             }
 
-            show(player, DialogBase.builder(Text.mm(cfg.listTitle))
+            List<DialogBody> body = new ArrayList<>(2);
+            body.add(DialogBody.item(ItemStack.of(cfg.listIcon)).showTooltip(false).build());
+            if (target.admin() && !cfg.adminListBody.isBlank()) {
+                body.add(DialogBody.plainMessage(Text.mm(cfg.adminListBody,
+                        Text.ph("owner", target.ownerName()),
+                        Text.ph("count", owned.size()),
+                        Text.ph("limit", ownerLimit(target)))));
+            }
+
+            String title = target.admin() ? cfg.adminListTitle : cfg.listTitle;
+            show(player, DialogBase.builder(Text.mm(title, Text.ph("owner", target.ownerName())))
                             .canCloseWithEscape(true)
                             .pause(false)
                             .afterAction(DialogBase.DialogAfterAction.CLOSE)
-                            .body(List.of(DialogBody.item(ItemStack.of(cfg.listIcon))
-                                    .showTooltip(false)
-                                    .build()))
+                            .body(body)
                             .build(),
                     DialogType.multiAction(buttons)
                             .columns(cfg.listColumns)
@@ -126,59 +170,86 @@ public final class HomeDialogs {
     }
 
     /** Teleport / Change Icon / Rename / Delete for one home. */
-    public void openManage(Player player, int slot) {
-        withHomes(player, owned -> {
+    public void openManage(Target target, int slot) {
+        Player player = target.viewer();
+        withHomes(target, owned -> {
             Home home = owned.bySlot(slot);
             if (home == null) {
-                openList(player, 0);
+                openList(target, 0);
                 return;
             }
             CheeseConfig cfg = this.config.get();
-            boolean coords = coordinatesVisible(owned, cfg);
+            boolean coords = coordinatesVisible(target, owned, cfg);
+            TagResolver[] placeholders = homePlaceholders(target, home, coords, cfg);
 
-            List<DialogBody> body = new ArrayList<>(3);
+            List<DialogBody> body = new ArrayList<>(4);
             body.add(DialogBody.item(ItemStack.of(home.icon())).showTooltip(false).build());
+            if (target.admin() && !cfg.adminManageBody.isBlank()) {
+                body.add(DialogBody.plainMessage(Text.mm(cfg.adminManageBody, placeholders)));
+            }
             String location = coords ? cfg.manageBody : cfg.manageBodyHidden;
             if (!location.isBlank()) {
-                body.add(DialogBody.plainMessage(Text.mm(location, homePlaceholders(home, coords, cfg))));
+                body.add(DialogBody.plainMessage(Text.mm(location, placeholders)));
             }
             if (home.hasDescription() && !cfg.manageDescriptionBody.isBlank()) {
-                body.add(DialogBody.plainMessage(
-                        Text.mm(cfg.manageDescriptionBody, homePlaceholders(home, coords, cfg))));
+                body.add(DialogBody.plainMessage(Text.mm(cfg.manageDescriptionBody, placeholders)));
             }
 
-            List<ActionButton> buttons = List.of(
-                    ActionButton.builder(Text.mm(cfg.manageTeleportLabel, homePlaceholders(home, coords, cfg)))
-                            .tooltip(Text.mm(cfg.manageTeleportTooltip, homePlaceholders(home, coords, cfg)))
+            List<ActionButton> buttons = new ArrayList<>(7);
+            buttons.add(ActionButton.builder(Text.mm(cfg.manageTeleportLabel, placeholders))
+                    .tooltip(Text.mm(target.admin() ? cfg.adminTeleportTooltip : cfg.manageTeleportTooltip,
+                            placeholders))
+                    .width(cfg.manageWidth)
+                    .action(action(player, view -> withHome(target, slot, (fresh, current) -> {
+                        if (target.admin()) {
+                            this.teleports.teleportNow(player, current);
+                        } else {
+                            this.teleports.request(player, current);
+                        }
+                    })))
+                    .build());
+            if (target.canEdit()) {
+                buttons.add(ActionButton.builder(Text.mm(cfg.manageIconLabel))
+                        .tooltip(Text.mm(cfg.manageIconTooltip))
+                        .width(cfg.manageWidth)
+                        .action(action(player, view -> openIcons(target, slot, "", 0)))
+                        .build());
+                buttons.add(ActionButton.builder(Text.mm(cfg.manageRenameLabel))
+                        .tooltip(Text.mm(cfg.manageRenameTooltip))
+                        .width(cfg.manageWidth)
+                        .action(action(player, view -> openRename(target, slot)))
+                        .build());
+                buttons.add(ActionButton.builder(Text.mm(cfg.manageDescriptionLabel))
+                        .tooltip(Text.mm(cfg.manageDescriptionTooltip))
+                        .width(cfg.manageWidth)
+                        .action(action(player, view -> openDescription(target, slot)))
+                        .build());
+                if (target.admin()) {
+                    buttons.add(ActionButton.builder(Text.mm(cfg.adminMoveLabel))
+                            .tooltip(Text.mm(cfg.adminMoveTooltip, placeholders))
                             .width(cfg.manageWidth)
-                            .action(action(player, view -> this.teleports.request(player, home)))
-                            .build(),
-                    ActionButton.builder(Text.mm(cfg.manageIconLabel))
-                            .tooltip(Text.mm(cfg.manageIconTooltip))
-                            .width(cfg.manageWidth)
-                            .action(action(player, view -> openIcons(player, slot, "", 0)))
-                            .build(),
-                    ActionButton.builder(Text.mm(cfg.manageRenameLabel))
-                            .tooltip(Text.mm(cfg.manageRenameTooltip))
-                            .width(cfg.manageWidth)
-                            .action(action(player, view -> openRename(player, slot)))
-                            .build(),
-                    ActionButton.builder(Text.mm(cfg.manageDescriptionLabel))
-                            .tooltip(Text.mm(cfg.manageDescriptionTooltip))
-                            .width(cfg.manageWidth)
-                            .action(action(player, view -> openDescription(player, slot)))
-                            .build(),
-                    ActionButton.builder(Text.mm(cfg.manageDeleteLabel))
-                            .tooltip(Text.mm(cfg.manageDeleteTooltip))
-                            .width(cfg.manageWidth)
-                            .action(action(player, view -> openDelete(player, slot)))
-                            .build(),
-                    ActionButton.builder(Text.mm(cfg.manageBackLabel))
-                            .width(cfg.manageWidth)
-                            .action(action(player, view -> openList(player, 0)))
+                            .action(action(player, view -> withHome(target, slot, (fresh, current) -> {
+                                this.operations.moveTo(fresh, current, player.getLocation());
+                                this.msg.send(player, "admin-home-moved",
+                                        Text.ph("name", current.name()),
+                                        Text.ph("player", target.ownerName()));
+                                audit(target, "moved home '" + current.name() + "' to their own position");
+                                openManage(target, slot);
+                            })))
                             .build());
+                }
+                buttons.add(ActionButton.builder(Text.mm(cfg.manageDeleteLabel))
+                        .tooltip(Text.mm(cfg.manageDeleteTooltip))
+                        .width(cfg.manageWidth)
+                        .action(action(player, view -> openDelete(target, slot)))
+                        .build());
+            }
+            buttons.add(ActionButton.builder(Text.mm(cfg.manageBackLabel))
+                    .width(cfg.manageWidth)
+                    .action(action(player, view -> openList(target, 0)))
+                    .build());
 
-            show(player, DialogBase.builder(Text.mm(cfg.manageTitle, homePlaceholders(home, coords, cfg)))
+            show(player, DialogBase.builder(Text.mm(cfg.manageTitle, placeholders))
                             .canCloseWithEscape(true)
                             .pause(false)
                             .afterAction(DialogBase.DialogAfterAction.CLOSE)
@@ -188,37 +259,40 @@ public final class HomeDialogs {
         });
     }
 
-    public void openRename(Player player, int slot) {
-        withHomes(player, owned -> {
+    public void openRename(Target target, int slot) {
+        Player player = target.viewer();
+        withHomes(target, owned -> {
             Home home = owned.bySlot(slot);
-            if (home == null) {
-                openList(player, 0);
+            if (home == null || !target.canEdit()) {
+                openList(target, 0);
                 return;
             }
             CheeseConfig cfg = this.config.get();
-            boolean coords = coordinatesVisible(owned, cfg);
+            boolean coords = coordinatesVisible(target, owned, cfg);
 
             List<ActionButton> buttons = List.of(
                     ActionButton.builder(Text.mm(cfg.renameSaveLabel))
                             .width(cfg.renameWidth)
-                            .action(action(player, view -> {
+                            .action(action(player, view -> withHome(target, slot, (fresh, current) -> {
                                 String typed = view.getText("newname");
-                                HomeOperations.Result result = this.operations.rename(owned, home,
+                                String before = current.name();
+                                HomeOperations.Result result = this.operations.rename(fresh, current,
                                         typed == null ? "" : typed.trim());
                                 if (result.status() == HomeOperations.Status.OK) {
-                                    this.msg.send(player, "home-renamed", Text.ph("name", home.name()));
+                                    this.msg.send(player, "home-renamed", Text.ph("name", current.name()));
+                                    audit(target, "renamed home '" + before + "' to '" + current.name() + "'");
                                 } else {
                                     this.operations.report(player, result);
                                 }
-                                openManage(player, slot);
-                            }))
+                                openManage(target, slot);
+                            })))
                             .build(),
                     ActionButton.builder(Text.mm(cfg.renameCancelLabel))
                             .width(cfg.renameWidth)
-                            .action(action(player, view -> openManage(player, slot)))
+                            .action(action(player, view -> openManage(target, slot)))
                             .build());
 
-            show(player, DialogBase.builder(Text.mm(cfg.renameTitle, homePlaceholders(home, coords, cfg)))
+            show(player, DialogBase.builder(Text.mm(cfg.renameTitle, homePlaceholders(target, home, coords, cfg)))
                             .canCloseWithEscape(true)
                             .pause(false)
                             .afterAction(DialogBase.DialogAfterAction.CLOSE)
@@ -234,38 +308,38 @@ public final class HomeDialogs {
     }
 
     /** Free-text note on a home, shown on hover in the list. */
-    public void openDescription(Player player, int slot) {
-        withHomes(player, owned -> {
+    public void openDescription(Target target, int slot) {
+        Player player = target.viewer();
+        withHomes(target, owned -> {
             Home home = owned.bySlot(slot);
-            if (home == null) {
-                openList(player, 0);
+            if (home == null || !target.canEdit()) {
+                openList(target, 0);
                 return;
             }
             CheeseConfig cfg = this.config.get();
-            boolean coords = coordinatesVisible(owned, cfg);
+            boolean coords = coordinatesVisible(target, owned, cfg);
 
             List<ActionButton> buttons = List.of(
                     ActionButton.builder(Text.mm(cfg.describeSaveLabel))
                             .width(cfg.describeWidth)
-                            .action(action(player, view -> {
-                                String typed = view.getText("newdescription");
-                                applyDescription(player, owned, home, typed);
-                                openManage(player, slot);
-                            }))
+                            .action(action(player, view -> withHome(target, slot, (fresh, current) -> {
+                                applyDescription(target, fresh, current, view.getText("newdescription"));
+                                openManage(target, slot);
+                            })))
                             .build(),
                     ActionButton.builder(Text.mm(cfg.describeClearLabel))
                             .width(cfg.describeWidth)
-                            .action(action(player, view -> {
-                                applyDescription(player, owned, home, null);
-                                openManage(player, slot);
-                            }))
+                            .action(action(player, view -> withHome(target, slot, (fresh, current) -> {
+                                applyDescription(target, fresh, current, null);
+                                openManage(target, slot);
+                            })))
                             .build(),
                     ActionButton.builder(Text.mm(cfg.describeCancelLabel))
                             .width(cfg.describeWidth)
-                            .action(action(player, view -> openManage(player, slot)))
+                            .action(action(player, view -> openManage(target, slot)))
                             .build());
 
-            show(player, DialogBase.builder(Text.mm(cfg.describeTitle, homePlaceholders(home, coords, cfg)))
+            show(player, DialogBase.builder(Text.mm(cfg.describeTitle, homePlaceholders(target, home, coords, cfg)))
                             .canCloseWithEscape(true)
                             .pause(false)
                             .afterAction(DialogBase.DialogAfterAction.CLOSE)
@@ -282,7 +356,8 @@ public final class HomeDialogs {
         });
     }
 
-    private void applyDescription(Player player, PlayerHomes owned, Home home, String raw) {
+    private void applyDescription(Target target, PlayerHomes owned, Home home, String raw) {
+        Player player = target.viewer();
         CheeseConfig cfg = this.config.get();
         String text = raw == null ? "" : raw.trim();
         if (text.length() > cfg.maxDescriptionLength) {
@@ -293,38 +368,42 @@ public final class HomeDialogs {
         owned.markDirty();
         this.msg.send(player, text.isEmpty() ? "description-cleared" : "description-set",
                 Text.ph("name", home.name()));
+        audit(target, (text.isEmpty() ? "cleared" : "changed") + " the description of '" + home.name() + "'");
     }
 
-    public void openDelete(Player player, int slot) {
-        withHomes(player, owned -> {
+    public void openDelete(Target target, int slot) {
+        Player player = target.viewer();
+        withHomes(target, owned -> {
             Home home = owned.bySlot(slot);
-            if (home == null) {
-                openList(player, 0);
+            if (home == null || !target.canEdit()) {
+                openList(target, 0);
                 return;
             }
             CheeseConfig cfg = this.config.get();
-            boolean coords = coordinatesVisible(owned, cfg);
+            boolean coords = coordinatesVisible(target, owned, cfg);
+            TagResolver[] placeholders = homePlaceholders(target, home, coords, cfg);
 
             ActionButton confirm = ActionButton.builder(Text.mm(cfg.deleteConfirmLabel))
                     .width(cfg.manageWidth)
-                    .action(action(player, view -> {
-                        this.operations.delete(owned, home);
-                        this.msg.send(player, "home-deleted", Text.ph("name", home.name()));
-                        openList(player, 0);
-                    }))
+                    .action(action(player, view -> withHome(target, slot, (fresh, current) -> {
+                        this.operations.delete(fresh, current);
+                        this.msg.send(player, "home-deleted", Text.ph("name", current.name()));
+                        audit(target, "deleted home '" + current.name() + "'");
+                        openList(target, 0);
+                    })))
                     .build();
             ActionButton cancel = ActionButton.builder(Text.mm(cfg.deleteCancelLabel))
                     .width(cfg.manageWidth)
-                    .action(action(player, view -> openManage(player, slot)))
+                    .action(action(player, view -> openManage(target, slot)))
                     .build();
 
             List<DialogBody> body = new ArrayList<>(2);
             body.add(DialogBody.item(ItemStack.of(home.icon())).showTooltip(false).build());
             if (!cfg.deleteBody.isBlank()) {
-                body.add(DialogBody.plainMessage(Text.mm(cfg.deleteBody, homePlaceholders(home, coords, cfg))));
+                body.add(DialogBody.plainMessage(Text.mm(cfg.deleteBody, placeholders)));
             }
 
-            show(player, DialogBase.builder(Text.mm(cfg.deleteTitle, homePlaceholders(home, coords, cfg)))
+            show(player, DialogBase.builder(Text.mm(cfg.deleteTitle, placeholders))
                             .canCloseWithEscape(true)
                             .pause(false)
                             .afterAction(DialogBase.DialogAfterAction.CLOSE)
@@ -335,15 +414,16 @@ public final class HomeDialogs {
     }
 
     /** Searchable icon picker. Stays open so several icons can be tried out. */
-    public void openIcons(Player player, int slot, String query, int page) {
-        withHomes(player, owned -> {
+    public void openIcons(Target target, int slot, String query, int page) {
+        Player player = target.viewer();
+        withHomes(target, owned -> {
             Home home = owned.bySlot(slot);
-            if (home == null) {
-                openList(player, 0);
+            if (home == null || !target.canEdit()) {
+                openList(target, 0);
                 return;
             }
             CheeseConfig cfg = this.config.get();
-            boolean coords = coordinatesVisible(owned, cfg);
+            boolean coords = coordinatesVisible(target, owned, cfg);
             List<IconCatalog.Entry> hits = this.catalog.get().search(query);
 
             // page-size 0 means "everything in one dialog"; the client scrolls it.
@@ -363,31 +443,31 @@ public final class HomeDialogs {
                     .width(cfg.iconsControlWidth)
                     .action(action(player, lifetime, view -> {
                         String typed = view.getText("search");
-                        openIcons(player, slot, typed == null ? "" : typed, 0);
+                        openIcons(target, slot, typed == null ? "" : typed, 0);
                     }))
                     .build());
             buttons.add(ActionButton.builder(Text.mm(cfg.iconsDefaultLabel))
                     .width(cfg.iconsControlWidth)
-                    .action(action(player, lifetime, view -> {
-                        this.operations.setIcon(owned, home, cfg.defaultIcon);
+                    .action(action(player, lifetime, view -> withHome(target, slot, (fresh, picked) -> {
+                        this.operations.setIcon(fresh, picked, cfg.defaultIcon);
                         this.msg.send(player, "icon-changed");
-                        openIcons(player, slot, query, current);
-                    }))
+                        openIcons(target, slot, query, current);
+                    })))
                     .build());
             buttons.add(ActionButton.builder(Text.mm(cfg.iconsBackLabel))
                     .width(cfg.iconsControlWidth)
-                    .action(action(player, lifetime, view -> openManage(player, slot)))
+                    .action(action(player, lifetime, view -> openManage(target, slot)))
                     .build());
             if (paged && current > 0) {
                 buttons.add(ActionButton.builder(Text.mm(cfg.iconsPrevLabel))
                         .width(cfg.iconsControlWidth)
-                        .action(action(player, lifetime, view -> openIcons(player, slot, query, current - 1)))
+                        .action(action(player, lifetime, view -> openIcons(target, slot, query, current - 1)))
                         .build());
             }
             if (paged && current + 1 < pages) {
                 buttons.add(ActionButton.builder(Text.mm(cfg.iconsNextLabel))
                         .width(cfg.iconsControlWidth)
-                        .action(action(player, lifetime, view -> openIcons(player, slot, query, current + 1)))
+                        .action(action(player, lifetime, view -> openIcons(target, slot, query, current + 1)))
                         .build());
             }
 
@@ -401,15 +481,15 @@ public final class HomeDialogs {
                         .tooltip(Component.text(entry.id(), NamedTextColor.GRAY)
                                 .decoration(TextDecoration.ITALIC, false))
                         .width(cfg.iconsButtonWidth)
-                        .action(action(player, lifetime, view -> {
-                            this.operations.setIcon(owned, home, entry.material());
+                        .action(action(player, lifetime, view -> withHome(target, slot, (fresh, picked) -> {
+                            this.operations.setIcon(fresh, picked, entry.material());
                             this.msg.send(player, "icon-changed");
-                            openIcons(player, slot, query, current);
-                        }))
+                            openIcons(target, slot, query, current);
+                        })))
                         .build());
             }
 
-            show(player, DialogBase.builder(Text.mm(cfg.iconsTitle, homePlaceholders(home, coords, cfg)))
+            show(player, DialogBase.builder(Text.mm(cfg.iconsTitle, homePlaceholders(target, home, coords, cfg)))
                             .canCloseWithEscape(true)
                             .pause(false)
                             .afterAction(DialogBase.DialogAfterAction.CLOSE)
@@ -426,42 +506,59 @@ public final class HomeDialogs {
 
     // === buttons ===========================================================
 
-    private ActionButton entryButton(Player player, CheeseConfig cfg, Home home, boolean coords) {
-        Component label = Text.mm(cfg.listEntryLabel, homePlaceholders(home, coords, cfg));
+    private ActionButton entryButton(Target target, CheeseConfig cfg, Home home, boolean coords) {
+        Player player = target.viewer();
+        Component label = Text.mm(cfg.listEntryLabel, homePlaceholders(target, home, coords, cfg));
+        int slot = home.slot();
         return ActionButton.builder(cfg.spritesInList ? withSprite(player, home.icon(), label) : label)
-                .tooltip(entryTooltip(cfg, home, coords))
+                .tooltip(entryTooltip(target, cfg, home, coords))
                 .width(cfg.listButtonWidth)
-                .action(action(player, view -> openManage(player, home.slot())))
+                .action(action(player, view -> openManage(target, slot)))
                 .build();
     }
 
-    private ActionButton emptyButton(Player player, CheeseConfig cfg, int slot, int step) {
-        return ActionButton.builder(Text.mm(cfg.listEmptyLabel, Text.ph("index", slot + 1)))
-                .tooltip(Text.mm(cfg.listEmptyTooltip, Text.ph("index", slot + 1)))
-                .width(cfg.listButtonWidth)
-                .action(action(player, view -> {
-                    PlayerHomes owned = this.homes.cached(player.getUniqueId());
+    private ActionButton emptyButton(Target target, CheeseConfig cfg, int slot, int step) {
+        Player player = target.viewer();
+        ActionButton.Builder button = ActionButton.builder(Text.mm(cfg.listEmptyLabel, Text.ph("index", slot + 1)))
+                .tooltip(Text.mm(target.admin() ? cfg.adminEmptyTooltip : cfg.listEmptyTooltip,
+                        Text.ph("index", slot + 1), Text.ph("owner", target.ownerName())))
+                .width(cfg.listButtonWidth);
+        if (!target.canEdit()) {
+            // A look-only admin sees the gap but cannot fill it.
+            return button.build();
+        }
+        return button.action(action(player, view -> {
+                    PlayerHomes owned = this.homes.cached(target.owner());
                     if (owned == null) {
                         this.msg.send(player, "still-loading");
                         return;
                     }
-                    HomeOperations.Result result = this.operations.createInSlot(player, owned, slot);
-                    this.operations.report(player, result);
-                    if (result.ok()) {
-                        openManage(player, slot);
+                    HomeOperations.Result result = target.admin()
+                            ? this.operations.forceCreateInSlot(owned, slot, player.getLocation())
+                            : this.operations.createInSlot(player, owned, slot);
+                    if (target.admin() && result.ok()) {
+                        this.msg.send(player, "admin-home-set",
+                                Text.ph("name", result.home().name()),
+                                Text.ph("player", target.ownerName()));
+                        audit(target, "set home '" + result.home().name() + "' at their own position");
                     } else {
-                        openList(player, step);
+                        this.operations.report(player, result);
+                    }
+                    if (result.ok()) {
+                        openManage(target, slot);
+                    } else {
+                        openList(target, step);
                     }
                 }))
                 .build();
     }
 
     /** The list tooltip, with the description appended when there is one. */
-    private Component entryTooltip(CheeseConfig cfg, Home home, boolean coords) {
-        Component tooltip = Text.mm(cfg.listEntryTooltip, homePlaceholders(home, coords, cfg));
+    private Component entryTooltip(Target target, CheeseConfig cfg, Home home, boolean coords) {
+        TagResolver[] placeholders = homePlaceholders(target, home, coords, cfg);
+        Component tooltip = Text.mm(cfg.listEntryTooltip, placeholders);
         if (home.hasDescription() && !cfg.listEntryTooltipDescription.isBlank()) {
-            tooltip = tooltip.append(
-                    Text.mm(cfg.listEntryTooltipDescription, homePlaceholders(home, coords, cfg)));
+            tooltip = tooltip.append(Text.mm(cfg.listEntryTooltipDescription, placeholders));
         }
         return tooltip;
     }
@@ -512,14 +609,15 @@ public final class HomeDialogs {
                 }, null), options);
     }
 
-    /** Runs {@code action} with the player's homes, loading them first if needed. */
-    private void withHomes(Player player, Consumer<PlayerHomes> action) {
-        PlayerHomes cached = this.homes.cached(player.getUniqueId());
+    /** Runs {@code action} with the owner's homes, loading them first if needed. */
+    private void withHomes(Target target, Consumer<PlayerHomes> action) {
+        Player player = target.viewer();
+        PlayerHomes cached = this.homes.cached(target.owner());
         if (cached != null) {
             action.accept(cached);
             return;
         }
-        this.homes.load(player.getUniqueId()).thenAccept(loaded -> {
+        this.homes.load(target.owner()).thenAccept(loaded -> {
             if (loaded == null) {
                 this.msg.send(player, "storage-error");
                 return;
@@ -532,16 +630,42 @@ public final class HomeDialogs {
         });
     }
 
+    /** Re-resolves the home in {@code slot} right before changing it. */
+    private void withHome(Target target, int slot, BiConsumer<PlayerHomes, Home> action) {
+        withHomes(target, owned -> {
+            Home home = owned.bySlot(slot);
+            if (home == null) {
+                openList(target, 0);
+                return;
+            }
+            action.accept(owned, home);
+        });
+    }
+
+    /** Admin edits land in the console so there is a trail of who changed what. */
+    private void audit(Target target, String what) {
+        if (target.admin()) {
+            this.plugin.getLogger().log(Level.INFO, "[admin] " + target.viewer().getName() + " "
+                    + what + " for " + target.ownerName() + " (" + target.owner() + ")");
+        }
+    }
+
+    /** The owner's own slot count, which only resolves while they are online. */
+    private String ownerLimit(Target target) {
+        Player owner = Bukkit.getPlayer(target.owner());
+        return owner == null ? "?" : Integer.toString(this.limits.maxHomes(owner));
+    }
+
     /**
      * Masking happens here rather than at each call site, so a coordinate cannot
      * leak through a label or tooltip an admin wrote themselves.
      */
-    private static net.kyori.adventure.text.minimessage.tag.resolver.TagResolver[] homePlaceholders(
-            Home home, boolean showCoordinates, CheeseConfig cfg) {
+    private static TagResolver[] homePlaceholders(Target target, Home home, boolean showCoordinates,
+                                                  CheeseConfig cfg) {
         String x = showCoordinates ? Long.toString(Math.round(home.x())) : cfg.hiddenCoordinate;
         String y = showCoordinates ? Long.toString(Math.round(home.y())) : cfg.hiddenCoordinate;
         String z = showCoordinates ? Long.toString(Math.round(home.z())) : cfg.hiddenCoordinate;
-        return new net.kyori.adventure.text.minimessage.tag.resolver.TagResolver[]{
+        return new TagResolver[]{
                 Text.ph("name", home.name()),
                 Text.ph("index", home.slot() + 1),
                 Text.ph("world", home.world()),
@@ -549,12 +673,20 @@ public final class HomeDialogs {
                 Text.ph("y", y),
                 Text.ph("z", z),
                 Text.ph("icon", home.icon().getKey().toString()),
-                Text.ph("description", home.description() == null ? "" : home.description())
+                Text.ph("description", home.description() == null ? "" : home.description()),
+                Text.ph("owner", target.ownerName())
         };
     }
 
-    /** The player's own choice, falling back to the configured default. */
-    private static boolean coordinatesVisible(PlayerHomes owned, CheeseConfig cfg) {
+    /**
+     * The owner's own choice, falling back to the configured default. The
+     * privacy switch is there to keep a base off a stream, not away from staff,
+     * so an admin always sees coordinates.
+     */
+    private static boolean coordinatesVisible(Target target, PlayerHomes owned, CheeseConfig cfg) {
+        if (target.admin()) {
+            return true;
+        }
         Boolean choice = owned.showCoordinates();
         return choice == null ? cfg.showCoordinatesDefault : choice;
     }

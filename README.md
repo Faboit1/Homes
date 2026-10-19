@@ -78,6 +78,32 @@ older than 1.21.9, buttons quietly fall back to plain text. Turn it off entirely
 | `/cheesehomes limits` | `cheesehomes.admin` | Show your own resolved slots / warm-up / cooldown |
 | `/cheesehomes import modernhome [overwrite]` | `cheesehomes.admin` | Import from ModernHome |
 
+## Admin: `/homeadmin`
+
+`/homeadmin` (`/hadmin`, `/adminhomes`) controls anybody's homes, whether they are
+online or not. Players are matched by exact name, by anyone the server has seen
+before, or by UUID. Home names with spaces work as the last argument
+(`/homeadmin tp Steve My Base`); `rename` needs the old name quoted if it has one.
+
+| Command | Permission | What it does |
+| --- | --- | --- |
+| `/homeadmin see <player>` | `cheesehomes.admin.see` | Open that player's homes menu |
+| `/homeadmin list <player>` | `cheesehomes.admin.see` | List their homes in chat; click a line to teleport |
+| `/homeadmin tp <player> <home>` | `cheesehomes.admin.see` | Teleport to one of their homes, instantly |
+| `/homeadmin limits <player>` | `cheesehomes.admin.see` | Homes used against their slot count |
+| `/homeadmin set <player> <home>` | `cheesehomes.admin.edit` | Create the home where you stand, or move it there |
+| `/homeadmin delete <player> <home>` | `cheesehomes.admin.edit` | Delete one of their homes |
+| `/homeadmin rename <player> <home> <new name>` | `cheesehomes.admin.edit` | Rename one of their homes |
+| `/homeadmin clear <player> confirm` | `cheesehomes.admin.edit` | Delete every home they have |
+
+The admin menu is the normal menu pointed at someone else, with a few differences:
+teleports skip warm-up and cooldown, coordinates always show (the privacy switch is
+for streams, not staff), every slot up to `limits.hard-cap` can be filled, and there
+is a **Move Here** button. Someone with only `cheesehomes.admin.see` gets a read-only
+menu - Teleport and Back, nothing else. Every change an admin makes is written to the
+console as `[admin] <who> <what> for <player> (<uuid>)`. The admin screen strings live
+under `dialog.admin` and the messages under `messages.admin-*`.
+
 ## Permissions
 
 | Node | Effect |

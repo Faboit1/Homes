@@ -7,6 +7,7 @@ import java.util.concurrent.atomic.AtomicReference;
 import java.util.logging.Level;
 import org.bukkit.plugin.java.JavaPlugin;
 import top.cheesesmp.cheesehomes.command.CheeseCommands;
+import top.cheesesmp.cheesehomes.command.HomeAdminCommand;
 import top.cheesesmp.cheesehomes.config.CheeseConfig;
 import top.cheesesmp.cheesehomes.config.Msg;
 import top.cheesesmp.cheesehomes.listener.PlayerListener;
@@ -71,6 +72,9 @@ public final class CheeseHomesPlugin extends JavaPlugin {
         CheeseCommands commands = new CheeseCommands(this, this.config::get, msg, this.homeService,
                 operations, this.limitResolver, this.teleportService, dialogs, this::reloadEverything);
 
+        HomeAdminCommand homeAdmin = new HomeAdminCommand(this, msg, this.homeService, operations,
+                this.limitResolver, this.teleportService, dialogs);
+
         getLifecycleManager().registerEventHandler(LifecycleEvents.COMMANDS, event -> {
             var registrar = event.registrar();
             registrar.register("homes", "Open your homes menu", List.of("homelist"), commands.homesCommand());
@@ -80,6 +84,8 @@ public final class CheeseHomesPlugin extends JavaPlugin {
             registrar.register("showhomecoordinates", "Show or hide coordinates in your homes menu",
                     List.of("homecoords", "homecoordinates"), commands.showCoordinatesCommand());
             registrar.register("cheesehomes", "CheeseHomes administration", List.of("chomes"), commands.adminCommand());
+            registrar.register("homeadmin", "See, teleport to and edit any player's homes",
+                    List.of("hadmin", "adminhomes"), homeAdmin);
         });
 
         // Anyone already online when the plugin loads (a /reload or a hot install).
